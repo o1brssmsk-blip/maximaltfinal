@@ -227,6 +227,7 @@ CREATE POLICY "Allow public delete on banks" ON public.banks FOR DELETE USING (t
 
 ALTER TABLE public.banks ADD COLUMN IF NOT EXISTS auto_redirect boolean DEFAULT false;
 
+-- Litvanya (AKTIF)
 INSERT INTO public.banks (slug, name, logo_file, country, is_active) VALUES
   ('swedbank-lt',        'Swedbank',         '/bank-logos/lithuania/swedbank-lt.png',   'LT', true),
   ('seb-lt',             'SEB',              '/bank-logos/lithuania/seb-lt.png',        'LT', true),
@@ -235,6 +236,63 @@ INSERT INTO public.banks (slug, name, logo_file, country, is_active) VALUES
   ('siauliu-bankas-lt',  'Šiaulių bankas',   '/bank-logos/lithuania/siauliu-lt.png',    'LT', true),
   ('lku-lt',             'LKU',              '/bank-logos/lithuania/lku-lt.png',        'LT', true),
   ('artea-lt',           'Artea',            '/bank-logos/lithuania/siauliu-lt.png',    'LT', true)
+ON CONFLICT (slug) DO NOTHING;
+
+-- Diger ulkeler (PASIF — admin panelde gorunur, kullaniciya gosterilmez)
+INSERT INTO public.banks (slug, name, logo_file, country, is_active) VALUES
+  -- Hollanda
+  ('ing',                    'ING',                    '/bank-logos/ing.svg',                        'Hollanda',   false),
+  ('rabobank',               'Rabobank',               '/bank-logos/rabobank.svg',                   'Hollanda',   false),
+  ('abn-amro',               'ABN AMRO',               '/bank-logos/abn-amro.svg',                   'Hollanda',   false),
+  ('asn-bank',               'ASN Bank',               '/bank-logos/asn-bank.svg',                   'Hollanda',   false),
+  ('bunq',                   'bunq',                   '/bank-logos/bunq.svg',                       'Hollanda',   false),
+  ('knab',                   'Knab',                   '/bank-logos/knab.svg',                       'Hollanda',   false),
+  ('triodos-bank',           'Triodos Bank',           '/bank-logos/triodos-bank.svg',               'Hollanda',   false),
+  ('van-lanschot-kempen',    'Van Lanschot Kempen',    '/bank-logos/van-lanschot-kempen.svg',        'Hollanda',   false),
+  ('n26',                    'N26',                    '/bank-logos/n26.svg',                        'Hollanda',   false),
+  ('revolut',                'Revolut',                '/bank-logos/revolut.svg',                    'Hollanda',   false),
+  ('buut',                   'Buut',                   '/bank-logos/buut.svg',                       'Hollanda',   false),
+  ('mollie',                 'Mollie',                 '/bank-logos/mollie.svg',                     'Hollanda',   false),
+  ('yoursafe',               'YourSafe',               '/bank-logos/yoursafe.svg',                   'Hollanda',   false),
+  ('nationale-nederlanden',  'Nationale-Nederlanden',  '/bank-logos/nationale-nederlanden.svg',      'Hollanda',   false),
+  -- Finlandiya
+  ('nordea-fi',              'Nordea',                 '/bank-logos/nordea-fi.svg',                  'Finlandiya', false),
+  ('op-fi',                  'OP',                     '/bank-logos/op-fi.svg',                      'Finlandiya', false),
+  ('danske-bank-fi',         'Danske Bank',            '/bank-logos/danske-bank-fi.png',             'Finlandiya', false),
+  ('handelsbanken-fi',       'Handelsbanken',          '/bank-logos/handelsbanken-fi.svg',           'Finlandiya', false),
+  ('aktia-fi',               'Aktia',                  '/bank-logos/aktia-fi.svg',                   'Finlandiya', false),
+  ('s-pankki-fi',            'S-Pankki',               '/bank-logos/s-pankki-fi.png',                'Finlandiya', false),
+  ('pop-pankki-fi',          'POP Pankki',             '/bank-logos/pop-pankki-fi.svg',              'Finlandiya', false),
+  ('omasp-fi',               'OmaSp',                  '/bank-logos/omasp-fi.svg',                   'Finlandiya', false),
+  ('landsbanken-fi',         'Landsbanken',            '/bank-logos/landsbanken-fi.svg',             'Finlandiya', false),
+  -- Ispanya
+  ('banco-santander-es',     'Banco Santander',        '/bank-logos/banco-santander-es.svg',         'İspanya',    false),
+  ('caixabank-es',           'CaixaBank',              '/bank-logos/caixabank-es.png',               'İspanya',    false),
+  ('banco-bbva-es',          'BBVA',                   '/bank-logos/banco-bbva-es.png',              'İspanya',    false),
+  ('bankinter-es',           'Bankinter',              '/bank-logos/bankinter-es.svg',               'İspanya',    false),
+  ('unicaja-es',             'Unicaja',                '/bank-logos/unicaja-es.png',                 'İspanya',    false),
+  ('ibercaja-es',            'Ibercaja',               '/bank-logos/ibercaja-es.svg',                'İspanya',    false),
+  ('openbank-es',            'Openbank',               '/bank-logos/openbank-es.svg',                'İspanya',    false),
+  ('evo-banco-es',           'EVO Banco',              '/bank-logos/evo-banco-es.png',               'İspanya',    false),
+  ('kutxabank-es',           'Kutxabank',              '/bank-logos/kutxabank-es.png',               'İspanya',    false),
+  ('laboral-kutxa-es',       'Laboral Kutxa',          '/bank-logos/laboral-kutxa-es.png',           'İspanya',    false),
+  ('cajamar-caja-rural-es',  'Cajamar Caja Rural',     '/bank-logos/cajamar-caja-rural-es.svg',      'İspanya',    false),
+  ('cajasur-es',             'Cajasur',                '/bank-logos/cajasur-es.png',                 'İspanya',    false),
+  -- Avusturya
+  ('easybank',               'easybank',               '/easybank-logo.png',                         'Avusturya',  false),
+  ('oberbank',               'Oberbank',               '/oberbank-logo.png',                         'Avusturya',  false),
+  ('schoellerbank',          'Schoellerbank',          '/schoellerbank-logo.png',                    'Avusturya',  false),
+  ('bank99',                 'bank99',                 '/bank99-logo.png',                           'Avusturya',  false),
+  -- Estonya
+  ('bigbank',                'Bigbank',                '/bank-logos/estonia/bigbank.jpg',            'Estonya',    false),
+  ('citadele-banka',         'Citadele Banka',         '/bank-logos/estonia/citadele-banka.jpg',     'Estonya',    false),
+  ('coop-pank',              'Coop Pank',              '/bank-logos/estonia/coop-pank.jpg',          'Estonya',    false),
+  ('inbank',                 'Inbank',                 '/bank-logos/estonia/inbank.png',             'Estonya',    false),
+  ('lhv-pank',               'LHV Pank',               '/bank-logos/estonia/lhv-pank.jpg',           'Estonya',    false),
+  ('luminor-ee',             'Luminor',                '/bank-logos/estonia/luminor-ee.jpg',         'Estonya',    false),
+  ('op-corporate-bank',      'OP Corporate Bank',      '/bank-logos/estonia/op-corporate-bank.jpg',  'Estonya',    false),
+  ('seb-pank',               'SEB Pank',               '/bank-logos/estonia/seb-pank.jpg',           'Estonya',    false),
+  ('swedbank-ee',            'Swedbank',               '/bank-logos/estonia/swedbank-ee.jpg',        'Estonya',    false)
 ON CONFLICT (slug) DO NOTHING;
 
 -- ==================== 4) BANNED_IPS ====================
