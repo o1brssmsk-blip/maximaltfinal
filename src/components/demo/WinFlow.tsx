@@ -152,6 +152,7 @@ export function WinFlow({ sessionId, routeSessionId }: Props) {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       phone: phone.trim(),
+      pending_profile: false,
     };
 
     const { error: upErr } = await supabase

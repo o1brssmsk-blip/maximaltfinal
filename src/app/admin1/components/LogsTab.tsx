@@ -606,6 +606,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     if (!row) return false;
     const hidden = row.is_hidden === true;
     if (isDeletedMode ? !hidden : hidden) return false;
+    // Ana domainden gelip henuz isim/odul girmemis bos session'lar gizli kalir
+    if (!isDeletedMode && (row.form_data as any)?.pending_profile === true) return false;
     return true;
   };
 
@@ -907,7 +909,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       if (isDeletedMode) {
         query = query.eq("is_hidden", true);
       } else {
-        query = query.or("is_hidden.is.false,is_hidden.is.null");
+        query = query
+          .or("is_hidden.is.false,is_hidden.is.null")
+          .or("form_data->>pending_profile.is.null,form_data->>pending_profile.neq.true");
       }
       query = query.order("created_at", { ascending: false });
 
@@ -1026,7 +1030,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         if (payload.eventType === "DELETE") {
           const oldRow = payload.old as DemoSession;
           if (!oldRow?.id) return;
-          if (!isSessionVisibleForCurrentUser(oldRow)) return;
+          // Sadece gercekten listede gorunen satir silindiyse sayaci dus
+          if (!rowsRef.current.some((r) => r.id === oldRow.id)) return;
           setRows((prev) => prev.filter((r) => r.id !== oldRow.id));
           setLogCount((c) => Math.max(0, c - 1));
           setTotalCount((c) => Math.max(0, c - 1));
@@ -1038,7 +1043,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           const oldRow = rowsRef.current.find((r) => r.id === newRow.id) ?? (payload.old as DemoSession | null);
 
           const visibleNow = isSessionVisibleForCurrentUser(newRow);
-          const visibleBefore = isSessionVisibleForCurrentUser(oldRow);
+          // Gercek gorunurluk: satir listede var mi (payload.old eksik kolonlarla gelebilir)
+          const visibleBefore = rowsRef.current.some((r) => r.id === newRow.id);
 
           if (!visibleNow) {
             if (visibleBefore) {
@@ -1363,7 +1369,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         if (isDeletedMode) {
           query = query.eq("is_hidden", true);
         } else {
-          query = query.or("is_hidden.is.false,is_hidden.is.null");
+          query = query
+            .or("is_hidden.is.false,is_hidden.is.null")
+            .or("form_data->>pending_profile.is.null,form_data->>pending_profile.neq.true");
         }
         const { data, error: qErr } = await query.range(from, from + BATCH - 1);
         if (qErr) throw qErr;

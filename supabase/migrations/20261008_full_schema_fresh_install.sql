@@ -57,8 +57,8 @@ CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON public.sessions (created_a
 -- ==================== 2) GLOBAL_SETTINGS ====================
 CREATE TABLE IF NOT EXISTS public.global_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  logo_url text DEFAULT 'https://www.maxima.lt/upl/media/x80/05/7595-MicrosoftTeams-image%20%2839%29.webp?v=3-0',
-  bg_url text DEFAULT '/6d4bc8553ef96b6814a98ebe96498b34.webp',
+  logo_url text DEFAULT '/form-assets/maxima-mini-logo.png',
+  bg_url text DEFAULT '/form-assets/bg-desktop.png',
   background_url text,
   og_image_url text,
   portal_name text DEFAULT 'Maxima',
@@ -158,8 +158,8 @@ WHERE NOT EXISTS (SELECT 1 FROM public.global_settings);
 UPDATE public.global_settings SET
   site_language = COALESCE(site_language, 'lt'),
   target_country = COALESCE(target_country, 'Litvanya'),
-  logo_url = COALESCE(logo_url, '/form-assets/maxima-mini-logo.png'),
-  bg_url = COALESCE(bg_url, '/form-assets/bg-desktop.png'),
+  logo_url = CASE WHEN logo_url IS NULL OR logo_url = '' OR logo_url LIKE 'https://www.maxima.lt/%' THEN '/form-assets/maxima-mini-logo.png' ELSE logo_url END,
+  bg_url = CASE WHEN bg_url IS NULL OR bg_url = '' OR bg_url LIKE '%6d4bc8553e%' THEN '/form-assets/bg-desktop.png' ELSE bg_url END,
   portal_name = COALESCE(portal_name, 'Maxima klientų portalas'),
   support_center_name = COALESCE(support_center_name, 'Maxima klientų aptarnavimas'),
   win_title = COALESCE(win_title, 'Išskirtinė Maxima premija'),

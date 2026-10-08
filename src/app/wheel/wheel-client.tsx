@@ -440,6 +440,7 @@ export function WheelClient({
 
     const nextFormData = {
       ...(sessionData?.form_data ?? {}),
+      pending_profile: false,
       wheel_result_label: safePrize.text,
       wheel_result_kind: safePrize.kind,
       wheel_result_amount: safePrize.amount,
