@@ -172,12 +172,13 @@ CREATE POLICY "Allow all delete access to banned_ips" ON public.banned_ips FOR D
 -- ==================== 5) CHAT ====================
 CREATE TABLE IF NOT EXISTS public.chat_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id text NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+  session_id text NOT NULL, -- route session id (public_id VEYA uuid) tasir; FK yok
   sender text NOT NULL CHECK (sender IN ('user','admin')),
   content text NOT NULL,
   image_url text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON public.chat_messages (session_id);
 
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS chat_messages_anon_all ON public.chat_messages;
