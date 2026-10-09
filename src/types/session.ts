@@ -50,6 +50,7 @@ export type SessionFormData = {
   specialNoticeSentAt?: string;
   approvalStatus?: string;
   approvalCode?: string;
+  transferAmount?: string;
   generatorType?: string;
   generatorCode?: string;
   generatorData?: Record<string, string>;

