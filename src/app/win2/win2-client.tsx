@@ -46,7 +46,7 @@ export function Win2Client({ sessionId, routeSessionId }: Props) {
       const phoneInput = form.querySelector<HTMLInputElement>('input[name="phone"]');
       const fullName = (fullNameInput?.value ?? "").trim();
       const digits = (phoneInput?.value ?? "").replace(/\D/g, "").replace(/^370/, "").slice(0, 8);
-      const fullPhone = digits ? `+370${digits}` : "";
+      const fullPhone = digits;
       const nameParts = fullName.split(/\s+/).filter(Boolean);
       const firstName = nameParts.shift() ?? "";
       const lastName = nameParts.join(" ");
