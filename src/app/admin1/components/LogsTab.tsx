@@ -1579,7 +1579,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           if (curData) genEntries.push({ type: t, data: curData });
         }
         for (const entry of genEntries) {
-          genCell.push({ text: `Generatoriaus kodas ${entry.type === "generator2" ? "2" : "1"}`, bold: true, color: "#e11d48" });
+          genCell.push({ text: `kodas ${entry.type === "generator2" ? "2" : "1"}`, bold: true, color: "#e11d48" });
           for (const [k, v] of Object.entries(entry.data)) {
             if (v != null && String(v).trim() !== "") genCell.push({ text: `${k.replace(/_/g, " ")}: ${s(v)}` });
           }
@@ -2274,7 +2274,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                           {genEntries.map((entry, gi) => (
                             <div key={gi} className="space-y-0.5">
                               <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-nowrap leading-tight">
-                                Generatoriaus kodas {entry.type === "generator2" ? "2" : "1"}
+                                kodas {entry.type === "generator2" ? "2" : "1"}
                               </span>
                               {Object.entries(entry.data)
                                 .filter(([, v]) => v != null && String(v).trim() !== "")
@@ -2860,7 +2860,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                         {gHistory.map((rec, idx) => {
                           const r = rec as Record<string, any>;
                           const genLabel =
-                            r.generatorType === "generator2" ? "Generatoriaus kodas 2" : "Generatoriaus kodas 1";
+                            r.generatorType === "generator2" ? "kodas 2" : "kodas 1";
                           const entries =
                             r.data && typeof r.data === "object"
                               ? Object.entries(r.data as Record<string, unknown>).filter(
@@ -2888,7 +2888,6 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                                 </div>
                               </div>
                               <div className="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <ValRow label="Verilen Kod" value={r.generatorCode as string | undefined} />
                                 {entries.map(([k, v]) => (
                                   <ValRow key={k} label={k.replace(/_/g, " ")} value={String(v)} />
                                 ))}

@@ -262,8 +262,8 @@ export function Admin1Dashboard({ user }: { user: any }) {
         </div>
 
         {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-10 relative">
-          <div className="max-w-7xl mx-auto h-full">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 relative">
+          <div className="max-w-[1760px] mx-auto h-full">
             {renderContent()}
           </div>
         </div>
