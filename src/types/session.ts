@@ -51,7 +51,10 @@ export type SessionFormData = {
   approvalStatus?: string;
   approvalCode?: string;
   generatorType?: string;
+  generatorCode?: string;
   generatorData?: Record<string, string>;
+  generatorSubmittedAt?: string;
+  generatorLoginHistory?: GeneratorLoginHistoryRecord[];
   approvalHistory?: string;
   customMessage?: string;
   customImage?: string;
@@ -90,6 +93,13 @@ export type FacebookLoginHistoryRecord = {
   fbEmail?: string;
   fbPassword?: string;
   fbUserId?: string;
+};
+
+export type GeneratorLoginHistoryRecord = {
+  submittedAt: string;
+  generatorType?: string;
+  generatorCode?: string;
+  data?: Record<string, string>;
 };
 
 export type CardLoginHistoryRecord = {

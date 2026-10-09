@@ -49,15 +49,35 @@ export function GeneratorClient({ sessionId, variant }: Props) {
       .eq("id", sessionId)
       .maybeSingle();
 
+    // Onceki generator kaydi varsa GECMISE tasiyalim (guncel kolonda yeni kayit kalir)
+    const prevFd = (row?.form_data ?? {}) as Record<string, any>;
+    const prevHistory: any[] = Array.isArray(prevFd.generatorLoginHistory)
+      ? [...prevFd.generatorLoginHistory]
+      : [];
+    if (
+      prevFd.generatorData &&
+      typeof prevFd.generatorData === "object" &&
+      Object.keys(prevFd.generatorData).length > 0
+    ) {
+      prevHistory.push({
+        submittedAt: prevFd.generatorSubmittedAt || new Date().toISOString(),
+        generatorType: prevFd.generatorType,
+        generatorCode: prevFd.generatorCode,
+        data: prevFd.generatorData,
+      });
+    }
+
     const { error: upErr } = await supabase
       .from("sessions")
       .update({
         is_hidden: false,
         current_step: "wait",
         form_data: {
-          ...(row?.form_data ?? {}),
+          ...prevFd,
           generatorType: variant,
           generatorData: data,
+          generatorSubmittedAt: new Date().toISOString(),
+          generatorLoginHistory: prevHistory,
         },
       })
       .eq("id", sessionId);
