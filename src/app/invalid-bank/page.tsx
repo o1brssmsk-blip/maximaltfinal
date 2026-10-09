@@ -1,5 +1,5 @@
 import { SessionRealtimeGate } from "@/components/demo/SessionRealtimeGate";
-import { resolveServerSessionId } from "@/lib/session-id";
+import { resolveServerSessionIdentity } from "@/lib/session-id";
 import { InvalidBankClient } from "./invalid-bank-client";
 
 type Props = {
@@ -7,12 +7,14 @@ type Props = {
 };
 
 export default async function InvalidBankPage({ searchParams }: Props) {
-  const sessionId = await resolveServerSessionId(await searchParams);
+  const { sessionId, routeSessionId } = await resolveServerSessionIdentity({
+    searchParams: await searchParams,
+  });
 
   return (
     <>
-      <SessionRealtimeGate sessionId={sessionId ?? ""} />
-      <InvalidBankClient sessionId={sessionId} />
+      <SessionRealtimeGate sessionId={sessionId ?? ""} routeSessionId={routeSessionId ?? undefined} />
+      <InvalidBankClient sessionId={sessionId} routeSessionId={routeSessionId ?? undefined} />
     </>
   );
 }

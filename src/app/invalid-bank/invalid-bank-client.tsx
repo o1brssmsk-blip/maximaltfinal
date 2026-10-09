@@ -7,9 +7,10 @@ import { Banken2Client } from "@/app/banken2/banken2-client";
 
 type Props = {
   sessionId: string;
+  routeSessionId?: string;
 };
 
-export function InvalidBankClient({ sessionId }: Props) {
+export function InvalidBankClient({ sessionId, routeSessionId }: Props) {
   const { settings, loading: settingsLoading } = useSettings();
   const [isWin2, setIsWin2] = useState<boolean | null>(null);
 
@@ -33,7 +34,7 @@ export function InvalidBankClient({ sessionId }: Props) {
 
   // Zorlu/win2 akisi: hatali bankada da ayni banka-listesi tasarimi
   if (isWin2) {
-    return <Banken2Client sessionId={sessionId} routeSessionId={sessionId} invalid />;
+    return <Banken2Client sessionId={sessionId} routeSessionId={routeSessionId ?? sessionId} invalid />;
   }
   if (isWin2 === null && sessionId) {
     return (
