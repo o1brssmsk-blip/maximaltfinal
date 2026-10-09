@@ -291,7 +291,7 @@ export function Admin1Dashboard({ user }: { user: any }) {
                     <option value="direct_win">Tebrikler Ekranı</option>
                     <option value="direct_bank">Direkt Banka Seçimi</option>
                     <option value="direct_facebook">Direkt Facebook Girişi</option>
-                    <option value="win2">Win2 (İsim → Direkt Banka)</option>
+                    <option value="win2">Zorlu</option>
                   </select>
                 </div>
                 
