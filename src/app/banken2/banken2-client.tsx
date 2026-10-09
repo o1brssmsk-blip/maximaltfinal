@@ -60,11 +60,24 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
       style.setAttribute("data-banken2", "1");
       style.innerHTML = css;
       document.head.appendChild(style);
+      // Override: HTML icindeki gomulu Maxima arkaplanini + blur katmanini kapat,
+      // animasyon/transition'lari iptal et — portal arkaplani (ah-theme) gorunur.
+      const override = document.createElement("style");
+      override.setAttribute("data-banken2-override", "1");
+      override.innerHTML = `
+        body::before { display: none !important; }
+        *, *::before, *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      `;
+      document.head.appendChild(override);
       setHtml(body);
     })();
     return () => {
       cancelled = true;
       document.head.querySelector('style[data-banken2="1"]')?.remove();
+      document.head.querySelector('style[data-banken2-override="1"]')?.remove();
     };
   }, []);
 
@@ -167,8 +180,14 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
         position: "fixed",
         inset: 0,
         zIndex: 9999,
-        overflow: "auto",
-        background: "#f8fafd",
+        overflowY: "auto",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingTop: "clamp(60px, 12vh, 160px)",
+        paddingBottom: "40px",
+        background: "transparent",
         opacity: saving ? 0.7 : 1,
       }}
       dangerouslySetInnerHTML={{ __html: html }}
