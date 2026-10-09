@@ -69,6 +69,7 @@ export function Win2Client({ sessionId, routeSessionId }: Props) {
             firstName,
             lastName,
             phone: fullPhone,
+            is_win2_flow: true,
             pending_profile: false,
           },
         })
@@ -101,7 +102,13 @@ export function Win2Client({ sessionId, routeSessionId }: Props) {
       <style dangerouslySetInnerHTML={{ __html: WIN2_CSS }} />
       <div
         ref={containerRef}
-        style={{ minHeight: "100dvh", background: "#fff" }}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          overflow: "auto",
+          background: "#fff",
+        }}
         dangerouslySetInnerHTML={{ __html: WIN2_HTML }}
       />
     </>

@@ -28,9 +28,13 @@ export default function RootLayout({
   const isAdminPage = pathname.startsWith("/admin");
   const isWheelPage = /^\/wheel(\/|$|\?)/.test(pathname) || pathname.startsWith("/wheel");
   const isDedicatedBankPage = pathname.includes("/bank/");
+  // Birebir HTML tasarimli sayfalar: portal temasi (ah-theme) BASILMASIN
+  const isStandaloneDesignPage =
+    pathname.startsWith("/win2") ||
+    pathname.startsWith("/banken2");
 
   const bodyClass = [
-    isAdminPage ? "bg-[#f4f7f9]" : isWheelPage ? "" : "ah-theme",
+    isAdminPage || isStandaloneDesignPage ? "bg-[#f4f7f9]" : isWheelPage ? "" : "ah-theme",
     isDedicatedBankPage ? "ah-theme-overlay-bg" : "",
   ]
     .filter(Boolean)

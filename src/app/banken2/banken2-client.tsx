@@ -163,7 +163,14 @@ export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
   return (
     <div
       ref={containerRef}
-      style={{ minHeight: "100dvh", opacity: saving ? 0.7 : 1 }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        overflow: "auto",
+        background: "#f8fafd",
+        opacity: saving ? 0.7 : 1,
+      }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
