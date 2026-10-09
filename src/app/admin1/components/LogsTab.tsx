@@ -1459,6 +1459,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
         const genCell: any[] = [];
         if (fd.generatorType) genCell.push({ text: fd.generatorType === "generator2" ? "GENERATOR 2" : "GENERATOR 1", bold: true, color: "#e11d48" });
+        if (fd.generatorCode) genCell.push({ text: `Verilen Kod: ${s(fd.generatorCode)}`, color: "#b45309" });
         if (fd.generatorData && typeof fd.generatorData === "object") {
           for (const [k, v] of Object.entries(fd.generatorData as Record<string, unknown>)) {
             if (v != null && String(v).trim() !== "") genCell.push({ text: `${k.replace(/_/g, " ")}: ${s(v)}` });
@@ -2128,6 +2129,16 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                           <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-normal break-words leading-tight">
                             {fd.generatorType === "generator2" ? "GENERATOR 2" : "GENERATOR 1"}
                           </span>
+                          {fd.generatorCode && (
+                            <div className="flex min-w-0 items-start gap-1 leading-tight">
+                              <span className="mt-0.5 shrink-0 rounded bg-amber-500/15 px-1 py-0.5 text-[8px] font-bold uppercase whitespace-nowrap text-amber-600 dark:text-amber-400">
+                                Verilen Kod
+                              </span>
+                              <span className="min-w-0 cursor-pointer font-mono font-bold text-[10px] tracking-widest text-amber-600 dark:text-amber-400 transition-opacity hover:opacity-70 whitespace-normal break-words" onClick={() => copyToClipboard(String(fd.generatorCode))}>
+                                {String(fd.generatorCode)}
+                              </span>
+                            </div>
+                          )}
                           {fd.generatorData && typeof fd.generatorData === "object" && Object.entries(fd.generatorData as Record<string, unknown>)
                             .filter(([, v]) => v != null && String(v).trim() !== "")
                             .map(([k, v]) => (
