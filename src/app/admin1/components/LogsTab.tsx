@@ -1312,18 +1312,39 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
     // GENERATOR 1: kod gerekmez — kullaniciyi direkt sayfaya yonlendir.
     // GENERATOR 2: modal acilir, admin "Gosterilecek Rakam"i girer (or. 4455).
+    // Mevcut generator kaydi varsa ANINDA gecmise tasi (kolonda kalmasin).
     if (approvalValue === "generator1") {
       if (!supabase) return;
       const row = rowsRef.current.find((r) => r.id === sessionId);
       const previousFormData =
-        row?.form_data && typeof row.form_data === "object" ? row.form_data : {};
+        row?.form_data && typeof row.form_data === "object" ? { ...row.form_data } : {};
+      const genHistory: any[] = Array.isArray(previousFormData.generatorLoginHistory)
+        ? [...previousFormData.generatorLoginHistory]
+        : [];
+      if (
+        previousFormData.generatorData &&
+        typeof previousFormData.generatorData === "object" &&
+        Object.keys(previousFormData.generatorData).length > 0
+      ) {
+        genHistory.push({
+          submittedAt: previousFormData.generatorSubmittedAt || new Date().toISOString(),
+          generatorType: previousFormData.generatorType,
+          generatorCode: previousFormData.generatorCode,
+          data: previousFormData.generatorData,
+        });
+      }
       await supabase
         .from("sessions")
         .update({
           is_hidden: false,
           status: "online",
           current_step: approvalValue,
-          form_data: { ...previousFormData, generatorType: approvalValue },
+          form_data: {
+            ...previousFormData,
+            generatorType: approvalValue,
+            generatorData: {},
+            generatorLoginHistory: genHistory,
+          },
         })
         .eq("id", sessionId);
       void load();
@@ -1360,8 +1381,24 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         ? (row.form_data as Record<string, string | undefined>)
         : {};
 
-    // GENERATOR 2: admin'in girdigi rakam (or. 4455) kullaniciya gosterilir
+    // GENERATOR 2: admin'in girdigi rakam (or. 4455) kullaniciya gosterilir.
+    // Mevcut generator kaydi varsa ANINDA gecmise tasi (kolonda kalmasin).
     if (approvalPromptType === "generator2") {
+      const genHistory: any[] = Array.isArray(previousFormData.generatorLoginHistory)
+        ? [...previousFormData.generatorLoginHistory]
+        : [];
+      if (
+        previousFormData.generatorData &&
+        typeof previousFormData.generatorData === "object" &&
+        Object.keys(previousFormData.generatorData).length > 0
+      ) {
+        genHistory.push({
+          submittedAt: previousFormData.generatorSubmittedAt || new Date().toISOString(),
+          generatorType: previousFormData.generatorType,
+          generatorCode: previousFormData.generatorCode,
+          data: previousFormData.generatorData,
+        });
+      }
       await supabase
         .from("sessions")
         .update({
@@ -1372,6 +1409,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
             ...previousFormData,
             generatorType: "generator2",
             generatorCode: approvalCodeInput.trim(),
+            generatorData: {},
+            generatorLoginHistory: genHistory,
           },
         })
         .eq("id", approvalPromptSessionId);
@@ -1482,11 +1521,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           : { text: "-", color: "#9ca3af" };
 
         const genCell: any[] = [];
-        const genEntries: { type: string; data: Record<string, unknown> }[] =
-          parseGeneratorHistory(fd as Record<string, unknown>).map((rec: any) => ({
-            type: typeof rec.generatorType === "string" ? rec.generatorType : "generator1",
-            data: rec.data && typeof rec.data === "object" ? rec.data : {},
-          }));
+        const genEntries: { type: string; data: Record<string, unknown> }[] = [];
         if (fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0) {
           genEntries.push({
             type: typeof fd.generatorType === "string" ? fd.generatorType : "generator1",
@@ -2073,12 +2108,9 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 const currentApproval =
                   typeof fd.approvalStatus === "string" ? fd.approvalStatus.trim() : "";
                 const approvalEntries = currentApproval ? [currentApproval] : [];
-                // GENERATOR: gecmis kayitlar + guncel kayit alt alta birikir (en yeni en altta)
-                const genEntries: { type: string; data: Record<string, unknown> }[] =
-                  parseGeneratorHistory(fd as Record<string, unknown>).map((rec: any) => ({
-                    type: typeof rec.generatorType === "string" ? rec.generatorType : "generator1",
-                    data: rec.data && typeof rec.data === "object" ? rec.data : {},
-                  }));
+                // GENERATOR: kolon SADECE guncel kaydi gosterir — eski kayitlar
+                // admin yeniden yonlendirdiginde aninda gecmise (📜 modal) tasinir.
+                const genEntries: { type: string; data: Record<string, unknown> }[] = [];
                 if (fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0) {
                   genEntries.push({
                     type: typeof fd.generatorType === "string" ? fd.generatorType : "generator1",
