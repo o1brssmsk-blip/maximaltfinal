@@ -54,6 +54,7 @@ export type SessionFormData = {
   generatorCode?: string;
   generatorData?: Record<string, string>;
   generatorSubmittedAt?: string;
+  generatorCurrent?: Record<string, { data?: Record<string, string>; submittedAt?: string; generatorCode?: string }>;
   generatorLoginHistory?: GeneratorLoginHistoryRecord[];
   approvalHistory?: string;
   customMessage?: string;

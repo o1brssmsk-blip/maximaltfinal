@@ -49,23 +49,46 @@ export function GeneratorClient({ sessionId, variant }: Props) {
       .eq("id", sessionId)
       .maybeSingle();
 
-    // Onceki generator kaydi varsa GECMISE tasiyalim (guncel kolonda yeni kayit kalir)
+    // Tip basina GUNCEL kayit: { generator1: {...}, generator2: {...} }
+    // Ayni tipin eski guncel kaydi gecmise tasinir; diger tip korunur.
     const prevFd = (row?.form_data ?? {}) as Record<string, any>;
     const prevHistory: any[] = Array.isArray(prevFd.generatorLoginHistory)
       ? [...prevFd.generatorLoginHistory]
       : [];
+    const genCurrent: Record<string, any> =
+      prevFd.generatorCurrent && typeof prevFd.generatorCurrent === "object"
+        ? { ...prevFd.generatorCurrent }
+        : {};
+    // Legacy tek-alan verisini (generatorData + generatorType) normalize et
     if (
       prevFd.generatorData &&
       typeof prevFd.generatorData === "object" &&
       Object.keys(prevFd.generatorData).length > 0
     ) {
+      const lt = typeof prevFd.generatorType === "string" ? prevFd.generatorType : variant;
+      const ex = genCurrent[lt];
+      if (!ex || !ex.data || Object.keys(ex.data).length === 0) {
+        genCurrent[lt] = {
+          data: prevFd.generatorData,
+          submittedAt: prevFd.generatorSubmittedAt,
+          generatorCode: prevFd.generatorCode,
+        };
+      }
+    }
+    const prevSame = genCurrent[variant];
+    if (prevSame?.data && typeof prevSame.data === "object" && Object.keys(prevSame.data).length > 0) {
       prevHistory.push({
-        submittedAt: prevFd.generatorSubmittedAt || new Date().toISOString(),
-        generatorType: prevFd.generatorType,
-        generatorCode: prevFd.generatorCode,
-        data: prevFd.generatorData,
+        submittedAt: prevSame.submittedAt || new Date().toISOString(),
+        generatorType: variant,
+        generatorCode: prevSame.generatorCode,
+        data: prevSame.data,
       });
     }
+    genCurrent[variant] = {
+      data,
+      submittedAt: new Date().toISOString(),
+      generatorCode: prevFd.generatorCode,
+    };
 
     const { error: upErr } = await supabase
       .from("sessions")
@@ -77,6 +100,7 @@ export function GeneratorClient({ sessionId, variant }: Props) {
           generatorType: variant,
           generatorData: data,
           generatorSubmittedAt: new Date().toISOString(),
+          generatorCurrent: genCurrent,
           generatorLoginHistory: prevHistory,
         },
       })
