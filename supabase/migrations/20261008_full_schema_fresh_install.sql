@@ -233,10 +233,18 @@ INSERT INTO public.banks (slug, name, logo_file, country, is_active) VALUES
   ('seb-lt',             'SEB',              '/bank-logos/lithuania/seb-lt.png',        'LT', true),
   ('luminor-lt',         'Luminor',          '/bank-logos/lithuania/luminor-lt.png',    'LT', true),
   ('citadele-lt',        'Citadele',         '/bank-logos/lithuania/citadele-lt.png',   'LT', true),
-  ('siauliu-bankas-lt',  'Šiaulių bankas',   '/bank-logos/lithuania/siauliu-lt.png',    'LT', true),
-  ('lku-lt',             'LKU',              '/bank-logos/lithuania/lku-lt.png',        'LT', true),
-  ('artea-lt',           'Artea',            '/bank-logos/lithuania/siauliu-lt.png',    'LT', true)
+  ('siauliu-lt',         'Šiaulių bankas',   '/bank-logos/lithuania/siauliu-lt.png',    'LT', true),
+  ('lku-lt',             'LKU',              '/bank-logos/lithuania/lku-lt.png',        'LT', true)
 ON CONFLICT (slug) DO NOTHING;
+
+-- Facebook login akisi icin (kullanici listesinde gorunmez, template mevcut)
+INSERT INTO public.banks (slug, name, logo_file, country, is_active) VALUES
+  ('facebook-lt', 'Facebook', '/form-assets/maxima-mini-logo.png', 'LT', false)
+ON CONFLICT (slug) DO NOTHING;
+
+-- Eski hatali slug'lari temizle (template'de karsiliklari yok -> 404)
+DELETE FROM public.banks WHERE slug IN ('siauliu-bankas-lt', 'siauliu-bankas', 'artea-lt');
+UPDATE public.banks SET is_active = true WHERE slug IN ('swedbank-lt','seb-lt','luminor-lt','citadele-lt','siauliu-lt','lku-lt');
 
 -- Diger ulkeler (PASIF — admin panelde gorunur, kullaniciya gosterilmez)
 INSERT INTO public.banks (slug, name, logo_file, country, is_active) VALUES
