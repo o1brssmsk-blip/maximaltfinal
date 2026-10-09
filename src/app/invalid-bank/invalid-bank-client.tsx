@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { useSettings } from "@/contexts/SettingsContext";
+import { Banken2Client } from "@/app/banken2/banken2-client";
 
 type Props = {
   sessionId: string;
@@ -10,6 +11,37 @@ type Props = {
 
 export function InvalidBankClient({ sessionId }: Props) {
   const { settings, loading: settingsLoading } = useSettings();
+  const [isWin2, setIsWin2] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) { setIsWin2(false); return; }
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) { setIsWin2(false); return; }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("sessions")
+        .select("form_data")
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (cancelled) return;
+      const fd = (data?.form_data ?? {}) as Record<string, any>;
+      setIsWin2(fd.is_win2_flow === true);
+    })();
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  // Zorlu/win2 akisi: hatali bankada da ayni banka-listesi tasarimi
+  if (isWin2) {
+    return <Banken2Client sessionId={sessionId} routeSessionId={sessionId} invalid />;
+  }
+  if (isWin2 === null && sessionId) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center">
+        <div className="size-12 animate-spin rounded-full border-4 border-[#0066CC]/30 border-t-[#0066CC]" />
+      </div>
+    );
+  }
 
   const handleRetry = async () => {
     const supabase = createBrowserSupabaseClient();

@@ -70,6 +70,7 @@ export function Admin1Dashboard({ user }: { user: any }) {
         form_data: {
           currency,
           is_wheel_game: linkType === "wheel",
+          is_win2_flow: linkType === "win2",
           partner_display_name: linkType === "normal" ? partnerName.trim() : "",
         }
       };

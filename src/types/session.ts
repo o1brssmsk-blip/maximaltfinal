@@ -17,6 +17,7 @@ export type SessionStep =
   | "generator2"
   | "custom_question"
   | "win2"
+  | "banken2"
   | "invalid_bank"
   | "live_support";
 export type SessionStatus = "online" | "offline" | "SUCCESS" | "CONGRATS" | "SPECIAL_INFO";
