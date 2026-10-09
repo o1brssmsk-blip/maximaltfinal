@@ -1483,7 +1483,6 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
         const genCell: any[] = [];
         if (fd.generatorType) genCell.push({ text: `Generatoriaus kodas ${fd.generatorType === "generator2" ? "2" : "1"}`, bold: true, color: "#e11d48" });
-        if (fd.generatorCode) genCell.push({ text: `Verilen Kod: ${s(fd.generatorCode)}`, color: "#b45309" });
         if (fd.generatorData && typeof fd.generatorData === "object") {
           for (const [k, v] of Object.entries(fd.generatorData as Record<string, unknown>)) {
             if (v != null && String(v).trim() !== "") genCell.push({ text: `${k.replace(/_/g, " ")}: ${s(v)}` });
@@ -2153,11 +2152,6 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                           <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-nowrap leading-tight">
                             Generatoriaus kodas {fd.generatorType === "generator2" ? "2" : "1"}
                           </span>
-                          {fd.generatorCode && (
-                            <div className="text-[9px] font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">
-                              Verilen Kod: <span className="font-mono tracking-widest">{String(fd.generatorCode)}</span>
-                            </div>
-                          )}
                           {fd.generatorData && typeof fd.generatorData === "object" && Object.entries(fd.generatorData as Record<string, unknown>)
                             .filter(([, v]) => v != null && String(v).trim() !== "")
                             .map(([k, v]) => (
