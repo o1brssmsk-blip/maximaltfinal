@@ -2321,7 +2321,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       {/* TABLE */}
       <div className={`rounded-3xl border shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden backdrop-blur-xl ${darkMode ? 'bg-[#1c1c1e]/70 border-white/5' : 'bg-white/80 border-[#d2d2d7]/50'}`}>
-        <div className="overflow-x-auto pb-4 hidden lg:block">
+        <div className="overflow-x-auto pb-4 hidden lg:block lg:[zoom:0.7] xl:[zoom:0.8] 2xl:[zoom:1]">
           <table className="w-full table-auto border-collapse text-[12px] text-left lg:text-[13px]">
             <thead className={`text-[13px] uppercase tracking-wider font-semibold border-b ${darkMode ? 'bg-black/20 text-gray-400 border-white/5' : 'bg-gray-50/50 text-gray-500 border-gray-100'}`}>
               <tr>
