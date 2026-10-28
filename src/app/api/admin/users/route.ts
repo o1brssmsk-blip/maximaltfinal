@@ -1,19 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error("Supabase admin env vars are not configured");
   }
-});
+  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
 
 export async function GET() {
   try {
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+    const { data: { users }, error } = await getSupabaseAdmin().auth.admin.listUsers();
     
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
@@ -40,7 +44,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { email, password, username, role } = body;
 
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    const { data, error } = await getSupabaseAdmin().auth.admin.createUser({
       email,
       password,
       email_confirm: true,
@@ -70,7 +74,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'User ID required' }, { status: 400 });
     }
 
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
+    const { error } = await getSupabaseAdmin().auth.admin.deleteUser(id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
@@ -99,7 +103,7 @@ export async function PATCH(req: Request) {
       updates.password = password;
     }
 
-    const { data, error } = await supabaseAdmin.auth.admin.updateUserById(id, updates);
+    const { data, error } = await getSupabaseAdmin().auth.admin.updateUserById(id, updates);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
