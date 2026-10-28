@@ -2,6 +2,8 @@ import { SessionRealtimeGate } from "@/components/demo/SessionRealtimeGate";
 import { resolveServerSessionIdentity } from "@/lib/session-id";
 import { CardClient } from "./card-client";
 
+export const dynamic = "force-dynamic";
+
 type Props = {
   searchParams: Promise<{ session?: string }>;
 };
@@ -14,7 +16,7 @@ export default async function CardPage({ searchParams }: Props) {
   return (
     <>
       <SessionRealtimeGate sessionId={sessionId ?? ""} routeSessionId={routeSessionId ?? undefined} />
-      <CardClient sessionId={sessionId} />
+      <CardClient sessionId={sessionId} routeSessionId={routeSessionId} />
     </>
   );
 }

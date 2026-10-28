@@ -11,6 +11,57 @@ export function playBeautifulNotification() {
   }
 }
 
+const BROWSER_NOTIF_PREF_KEY = "admin_browser_notifications";
+
+export function areBrowserNotificationsEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    localStorage.getItem(BROWSER_NOTIF_PREF_KEY) === "1" &&
+    "Notification" in window &&
+    Notification.permission === "granted"
+  );
+}
+
+export async function enableBrowserNotifications(): Promise<boolean> {
+  if (typeof window === "undefined" || !("Notification" in window)) return false;
+  if (Notification.permission === "granted") {
+    localStorage.setItem(BROWSER_NOTIF_PREF_KEY, "1");
+    return true;
+  }
+  if (Notification.permission === "denied") return false;
+  const permission = await Notification.requestPermission();
+  if (permission === "granted") {
+    localStorage.setItem(BROWSER_NOTIF_PREF_KEY, "1");
+    return true;
+  }
+  return false;
+}
+
+export function disableBrowserNotifications() {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(BROWSER_NOTIF_PREF_KEY, "0");
+}
+
+export function sendBrowserNotification(title: string, body?: string) {
+  if (typeof window === "undefined" || !areBrowserNotificationsEnabled()) return;
+  if (document.visibilityState === "visible" && document.hasFocus()) return;
+
+  try {
+    const notification = new Notification(title, {
+      body: body || "",
+      icon: "/favicon.ico",
+      tag: `admin-alert-${Date.now()}`,
+    });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+    setTimeout(() => notification.close(), 8000);
+  } catch (e) {
+    console.error("Browser notification failed", e);
+  }
+}
+
 export function showBeautifulToast(message: string, description?: string) {
   if (typeof window === "undefined") return;
 

