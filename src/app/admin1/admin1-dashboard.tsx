@@ -8,6 +8,7 @@ import { BanksTab } from "./components/BanksTab";
 import { LanguageTab } from "./components/LanguageTab";
 import { WheelSettingsTab } from "./components/WheelSettingsTab";
 import { GeneralSettingsTab } from "./components/GeneralSettingsTab";
+import { PushNotifyToggle } from "./components/PushNotifyToggle";
 import { useSettings } from "@/contexts/SettingsContext";
 import { normalizeCountryName } from "@/lib/country-utils";
 
@@ -292,6 +293,7 @@ export function Admin1Dashboard({ user }: { user: any }) {
             <span className="text-lg md:text-xl font-semibold opacity-90 truncate">{activeTab}</span>
           </div>
           <div className="flex items-center space-x-2 md:space-x-5">
+            <PushNotifyToggle darkMode={darkMode} />
             <span className={`hidden sm:inline-flex text-sm font-medium px-3 py-1 rounded-full ${darkMode ? 'bg-white/10 text-white/70' : 'bg-black/5 text-black/60'}`}>
               @{adminIdentifier}
             </span>

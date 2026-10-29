@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
+import { sendPushToAll } from '@/lib/push-server';
 
 export async function createSessionAction(partnerName: string) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -62,7 +63,15 @@ export async function createSessionAction(partnerName: string) {
     return { success: false, error: error?.message || 'Failed to create session' };
   }
 
-  return { 
+  // Yeni ziyaretci -> admin cihazlarina push bildirimi (sessiz fail)
+  void sendPushToAll({
+    title: 'Yeni Ziyaretçi',
+    body: `${partnerName} üzerinden siteye giriş yapıldı`,
+    url: '/admin1',
+    tag: `session-${data.id}`,
+  });
+
+  return {
     success: true, 
     data: {
       id: data.id,
