@@ -4,7 +4,7 @@ import webpush from "web-push";
 // VAPID public key istemci tarafa da acik olabilir (tanim geregi public).
 export const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
-  "BJbDOEdrqlGB05nxWOuc-7AM72XU1ePZwaLBa78dEVxupeKqsL_pvsbeH1CJUTyTa0xwwchdK6SxEOaGLrgut7k";
+  "BKqUami4UX-pGczEOO-_Ho33J-G4qHeFAk5KjP7JNUxbQWq_3fwMN66dOtMh1kXBCRSdxIGUU5XNAq0xlpqBFjI";
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,7 +19,10 @@ let vapidReady = false;
 function ensureVapid() {
   if (vapidReady) return true;
   const priv = process.env.VAPID_PRIVATE_KEY;
-  if (!priv) return false;
+  if (!priv) {
+    console.error("[push] VAPID_PRIVATE_KEY env eksik — bildirim gonderilemez");
+    return false;
+  }
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || "mailto:admin@localhost",
     VAPID_PUBLIC_KEY,
@@ -45,7 +48,10 @@ export async function sendPushToAll(payload: PushPayload): Promise<number> {
     const { data: subs } = await sb
       .from("push_subscriptions")
       .select("endpoint, keys");
-    if (!subs?.length) return 0;
+    if (!subs?.length) {
+      console.warn("[push] push_subscriptions bos — hic cihaz abone degil");
+      return 0;
+    }
 
     let sent = 0;
     const stale: string[] = [];
@@ -59,6 +65,7 @@ export async function sendPushToAll(payload: PushPayload): Promise<number> {
           );
           sent += 1;
         } catch (e: any) {
+          console.error("[push] sendNotification:", e?.statusCode, e?.message);
           if (e?.statusCode === 404 || e?.statusCode === 410) stale.push(row.endpoint);
         }
       }),
