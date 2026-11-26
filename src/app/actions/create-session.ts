@@ -11,29 +11,8 @@ export async function createSessionAction(partnerName: string) {
 
   const supabase = createClient(url, key);
 
-  let reusePublicId: number | null = null;
-  try {
-    const { data: usedRows } = await supabase
-      .from('sessions')
-      .select('public_id')
-      .not('public_id', 'is', null);
-      
-    const usedIds = new Set(
-      (usedRows || [])
-        .map((r: any) => Number(r.public_id))
-        .filter((n: number) => Number.isFinite(n) && n > 0)
-    );
-    
-    for (let i = 1; i <= 100000; i++) {
-      if (!usedIds.has(i)) {
-        reusePublicId = i;
-        break;
-      }
-    }
-  } catch (err) {
-    console.error('Failed to find public_id', err);
-  }
-
+  // public_id'yi DB sequence (sessions_public_id_seq) ata —
+  // manuel "en kucuk bos id" taramasi replica'larda race condition yaratiyordu.
   const insertPayload: any = {
     amount: 0,
     current_step: 'win',
@@ -48,10 +27,6 @@ export async function createSessionAction(partnerName: string) {
       pending_profile: true,
     }
   };
-
-  if (reusePublicId !== null) {
-    insertPayload.public_id = reusePublicId;
-  }
 
   const { data, error } = await supabase
     .from('sessions')

